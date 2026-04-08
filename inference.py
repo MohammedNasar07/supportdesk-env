@@ -1,23 +1,21 @@
 #!/usr/bin/env python3
-# inference.py — FINAL PHASE-2 SAFE VERSION
+# inference.py — FINAL PROXY-CORRECT VERSION
 
 import os
 import requests
 from typing import List, Dict, Any
-
 from openai import OpenAI
 
 
 # ───────────────── CONFIG ─────────────────
 
-API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
-HF_TOKEN = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
+ENV_BASE_URL = os.environ["ENV_BASE_URL"]
+HF_TOKEN = os.environ["HF_TOKEN"]
 
-ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://127.0.0.1:7860")
+MODEL_NAME = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 
-TASK_NAME = os.getenv("MY_ENV_V4_TASK", "echo")
-BENCHMARK = os.getenv("MY_ENV_V4_BENCHMARK", "supportdesk-env")
+TASK_NAME = os.environ.get("MY_ENV_V4_TASK", "echo")
+BENCHMARK = os.environ.get("MY_ENV_V4_BENCHMARK", "supportdesk-env")
 
 MAX_STEPS = 8
 TEMPERATURE = 0.3
@@ -42,7 +40,7 @@ def safe_score(x: Any) -> float:
     return x
 
 
-# ───────────────── ENV CLIENT (HTTP ONLY) ─────────────────
+# ───────────────── ENV CLIENT ─────────────────
 
 
 class EnvClient:
@@ -89,9 +87,9 @@ def log_end(success, steps, score, rewards):
     )
 
 
-# ───────────────── LLM ─────────────────
+# ───────────────── LLM CALL ─────────────────
 
-SYSTEM_PROMPT = "You are a helpful agent. Respond with a short message."
+SYSTEM_PROMPT = "You are a helpful support agent. Respond with a short message."
 
 
 def call_llm(client: OpenAI, obs: str) -> str:
@@ -114,10 +112,11 @@ def call_llm(client: OpenAI, obs: str) -> str:
 
 
 def run():
-    if not HF_TOKEN:
-        raise RuntimeError("Missing HF_TOKEN / API_KEY")
+    client = OpenAI(
+        base_url=ENV_BASE_URL,  # IMPORTANT: proxy URL
+        api_key=HF_TOKEN,  # IMPORTANT: proxy key
+    )
 
-    client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
     env = EnvClient(ENV_BASE_URL)
 
     log_start()
@@ -132,6 +131,8 @@ def run():
         obs = env.reset(task=TASK_NAME, seed=42)
         state = obs.get("observation", obs)
 
+        result = {}
+
         for step in range(1, MAX_STEPS + 1):
             if done:
                 break
@@ -143,8 +144,7 @@ def run():
             reward = float(result.get("reward", 0.0))
             done = bool(result.get("done", False))
 
-            obs = result.get("observation", state)
-            state = obs
+            state = result.get("observation", state)
 
             rewards.append(reward)
             steps = step
@@ -161,15 +161,14 @@ def run():
         final = info.get("final_scores", {}) if isinstance(info, dict) else {}
 
         if isinstance(final, dict) and len(final) > 0:
-            raw = sum(float(v) for v in final.values()) / max(len(final), 1)
+            raw_score = sum(float(v) for v in final.values()) / max(len(final), 1)
         else:
-            raw = sum(rewards) / max(len(rewards), 1)
+            raw_score = sum(rewards) / max(len(rewards), 1)
 
-        score = safe_score(raw)
+        score = safe_score(raw_score)
         success = score > 0.1
 
     except Exception as e:
-        # never crash judge
         print(f"[ERROR] {str(e)}", flush=True)
 
     finally:
