@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
-# inference.py — SupportDesk-Env submission (FIXED & VALIDATOR SAFE)
+# inference.py — SupportDesk-Env submission (FINAL FIXED VERSION)
 
 from __future__ import annotations
 
 import json
 import os
 import sys
-import textwrap
 from typing import Any, Dict, List, Optional
 
 import requests
 from openai import OpenAI
 
 
-# ── Configuration ──────────────────────────────────────────────────────────────
+# ── CONFIG ──────────────────────────────────────────────────────────────
 
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
@@ -23,20 +22,8 @@ ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://127.0.0.1:7860")
 MAX_STEPS = 10
 TEMPERATURE = 0.1
 MAX_TOKENS = 600
-MAX_RETRIES = 2
 
-# FIX: strict scoring safety
 EPS = 1e-6
-
-
-def safe_score(x: Any) -> float:
-    try:
-        v = float(x)
-    except Exception:
-        v = 0.0
-    return min(max(v, EPS), 1 - EPS)
-
-
 SUCCESS_THRESHOLD = 0.5
 
 BENCHMARK_NAME = "supportdesk-env"
@@ -48,7 +35,26 @@ _seeds_env = os.getenv("SEEDS", "42,43,44")
 SEEDS: List[int] = [int(s.strip()) for s in _seeds_env.split(",")]
 
 
-# ── Logging ───────────────────────────────────────────────────────────────────
+# ── SAFE SCORE ─────────────────────────────────────────────────────────
+
+
+def safe_score(x: Any) -> float:
+    """
+    STRICT validator-safe clamp into (0,1)
+    """
+    try:
+        v = float(x)
+    except Exception:
+        v = 0.0
+
+    if v <= 0.0:
+        return EPS
+    if v >= 1.0:
+        return 1 - EPS
+    return v
+
+
+# ── LOGGING ────────────────────────────────────────────────────────────
 
 
 def log_start(task: str, env: str, model: str) -> None:
@@ -73,7 +79,7 @@ def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> No
     )
 
 
-# ── Environment Client ────────────────────────────────────────────────────────
+# ── ENV CLIENT ─────────────────────────────────────────────────────────
 
 
 class EnvClient:
@@ -92,22 +98,14 @@ class EnvClient:
         r.raise_for_status()
         return r.json()
 
-    def health(self) -> Dict[str, Any]:
-        r = requests.get(f"{self.base}/health", timeout=10)
-        r.raise_for_status()
-        return r.json()
 
-
-# ── Prompts ───────────────────────────────────────────────────────────────────
+# ── PROMPTS ─────────────────────────────────────────────────────────────
 
 SYSTEM_PROMPTS = {
     "classify": "You are a support classifier. Output only JSON.",
     "triage": "You are a support triage agent. Output only JSON.",
     "resolve": "You are a senior support agent. Output only JSON.",
 }
-
-
-# ── LLM ───────────────────────────────────────────────────────────────────────
 
 
 def build_prompt(obs: Dict[str, Any], step_num: int) -> str:
@@ -144,7 +142,7 @@ def ask_llm(
         raw = call_llm(client, messages)
 
         if raw.startswith("```"):
-            raw = raw.strip("```").replace("json", "").strip()
+            raw = raw.replace("```json", "").replace("```", "").strip()
 
         return json.loads(raw)
 
@@ -152,15 +150,16 @@ def ask_llm(
         return {"action_type": "submit"}
 
 
-# ── Episode ───────────────────────────────────────────────────────────────────
+# ── EPISODE ─────────────────────────────────────────────────────────────
 
 
 def run_episode(client: OpenAI, env: EnvClient, task: str, seed: int):
     obs = env.reset(task=task, seed=seed)
 
-    rewards = []
-    done = False
+    rewards: List[float] = []
     steps = 0
+    done = False
+
     score = EPS
     success = False
 
@@ -180,11 +179,16 @@ def run_episode(client: OpenAI, env: EnvClient, task: str, seed: int):
             reward = float(result.get("reward", 0.0))
             done = bool(result.get("done", False))
             obs = result.get("observation", obs)
-            info = result.get("info", {})
 
-            # ✅ FIX: safe scoring ALWAYS
+            info = result.get("info", {})
             final = info.get("final_scores", {})
-            score = safe_score(final.get("total", 0.0))
+
+            # ✅ SAFE SCORE (CRITICAL FIX)
+            raw_score = final.get("total", 0.0)
+            if raw_score is None:
+                raw_score = 0.0
+
+            score = safe_score(raw_score)
 
         except Exception as e:
             error = str(e)
@@ -196,19 +200,30 @@ def run_episode(client: OpenAI, env: EnvClient, task: str, seed: int):
         if done:
             break
 
-    # final safety submit
+    # ── FINAL SUBMIT SAFETY ────────────────────────────────
     if not done:
         try:
             result = env.step({"action_type": "submit"})
+
             final = result.get("info", {}).get("final_scores", {})
-            score = safe_score(final.get("total", 0.0))
+
+            raw_score = final.get("total", 0.0)
+            if raw_score is None:
+                raw_score = 0.0
+
+            score = safe_score(raw_score)
+
             rewards.append(float(result.get("reward", 0.0)))
             steps += 1
+
             log_step(steps, '{"action_type":"submit"}', rewards[-1], True, None)
+
         except Exception:
             pass
 
-    # ✅ FIX: strict success logic
+    # FINAL SAFETY (DOUBLE PROTECTION)
+    score = safe_score(score)
+
     success = score > SUCCESS_THRESHOLD
 
     log_end(success, steps, score, rewards)
@@ -222,7 +237,7 @@ def run_episode(client: OpenAI, env: EnvClient, task: str, seed: int):
     }
 
 
-# ── Runner ────────────────────────────────────────────────────────────────────
+# ── RUNNER ─────────────────────────────────────────────────────────────
 
 
 def run_all(client: OpenAI, env: EnvClient):
@@ -243,7 +258,7 @@ def run_all(client: OpenAI, env: EnvClient):
         print(r)
 
 
-# ── Main ───────────────────────────────────────────────────────────────────────
+# ── MAIN ───────────────────────────────────────────────────────────────
 
 
 def main():
