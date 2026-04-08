@@ -1,12 +1,16 @@
 [project]
 name = "supportdesk-env"
 version = "1.0.0"
-description = "Support Desk Environment - FastAPI Docker Space"
-requires-python = ">=3.9"
+description = "Support Desk OpenEnv Deployment"
+requires-python = ">=3.10"
 
 dependencies = [
     "fastapi",
     "uvicorn",
     "openai",
-    "python-dotenv"
+    "python-dotenv",
+    "openenv-core>=0.2.0",
 ]
+
+[project.scripts]
+server = "server.app:app"
