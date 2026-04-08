@@ -1,35 +1,35 @@
 #!/usr/bin/env python3
-# inference.py — MINIMAL SUBMISSION SAFE VERSION
+# inference.py — FINAL PHASE-2 SAFE VERSION
 
 import os
-import asyncio
-from typing import List, Optional
+import requests
+from typing import List, Dict, Any
 
 from openai import OpenAI
-from my_env_v4 import MyEnvV4Action, MyEnvV4Env
 
-# ── CONFIG ───────────────────────────────────────────────
+
+# ───────────────── CONFIG ─────────────────
 
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 HF_TOKEN = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
 
-IMAGE_NAME = os.getenv("IMAGE_NAME")
+ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://127.0.0.1:7860")
 
 TASK_NAME = os.getenv("MY_ENV_V4_TASK", "echo")
-BENCHMARK = os.getenv("MY_ENV_V4_BENCHMARK", "my_env_v4")
+BENCHMARK = os.getenv("MY_ENV_V4_BENCHMARK", "supportdesk-env")
 
 MAX_STEPS = 8
-TEMPERATURE = 0.5
+TEMPERATURE = 0.3
 MAX_TOKENS = 150
 
 EPS = 1e-6
 
 
-# ── SAFE SCORE ───────────────────────────────────────────
+# ───────────────── SAFE SCORE ─────────────────
 
 
-def safe_score(x: float) -> float:
+def safe_score(x: Any) -> float:
     try:
         x = float(x)
     except:
@@ -42,7 +42,33 @@ def safe_score(x: float) -> float:
     return x
 
 
-# ── LOGGING ──────────────────────────────────────────────
+# ───────────────── ENV CLIENT (HTTP ONLY) ─────────────────
+
+
+class EnvClient:
+    def __init__(self, base_url: str):
+        self.base = base_url.rstrip("/")
+
+    def reset(self, task: str, seed: int = 42) -> Dict[str, Any]:
+        r = requests.post(
+            f"{self.base}/reset",
+            params={"task": task, "seed": seed},
+            timeout=30,
+        )
+        r.raise_for_status()
+        return r.json()
+
+    def step(self, action: Dict[str, Any]) -> Dict[str, Any]:
+        r = requests.post(
+            f"{self.base}/step",
+            json=action,
+            timeout=30,
+        )
+        r.raise_for_status()
+        return r.json()
+
+
+# ───────────────── LOGGING ─────────────────
 
 
 def log_start():
@@ -63,63 +89,69 @@ def log_end(success, steps, score, rewards):
     )
 
 
-# ── LLM ───────────────────────────────────────────────────
+# ───────────────── LLM ─────────────────
 
-SYSTEM_PROMPT = "You are an assistant. Reply with a short message only."
+SYSTEM_PROMPT = "You are a helpful agent. Respond with a short message."
 
 
-def get_action(client: OpenAI, obs: str) -> str:
+def call_llm(client: OpenAI, obs: str) -> str:
     try:
-        r = client.chat.completions.create(
+        resp = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": obs},
+                {"role": "user", "content": str(obs)},
             ],
             temperature=TEMPERATURE,
             max_tokens=MAX_TOKENS,
         )
-        return (r.choices[0].message.content or "hello").strip()
+        return (resp.choices[0].message.content or "hello").strip()
     except:
         return "hello"
 
 
-# ── MAIN EPISODE ─────────────────────────────────────────
+# ───────────────── MAIN EPISODE ─────────────────
 
 
-async def main():
+def run():
+    if not HF_TOKEN:
+        raise RuntimeError("Missing HF_TOKEN / API_KEY")
+
     client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
-    env = await MyEnvV4Env.from_docker_image(IMAGE_NAME)
-
-    rewards: List[float] = []
-    steps = 0
-    score = EPS
-    success = False
+    env = EnvClient(ENV_BASE_URL)
 
     log_start()
 
+    rewards: List[float] = []
+    steps = 0
+    done = False
+    score = EPS
+    success = False
+
     try:
-        result = await env.reset()
-        obs = result.observation.echoed_message
-        done = False
+        obs = env.reset(task=TASK_NAME, seed=42)
+        state = obs.get("observation", obs)
 
         for step in range(1, MAX_STEPS + 1):
             if done:
                 break
 
-            action = get_action(client, obs)
+            action_text = call_llm(client, state)
 
-            result = await env.step(MyEnvV4Action(message=action))
+            result = env.step({"message": action_text})
 
-            reward = float(result.reward or 0.0)
-            done = bool(result.done)
+            reward = float(result.get("reward", 0.0))
+            done = bool(result.get("done", False))
 
-            obs = result.observation.echoed_message
+            obs = result.get("observation", state)
+            state = obs
 
             rewards.append(reward)
             steps = step
 
-            log_step(step, action, reward, done, None)
+            error = result.get("error", None)
+
+            log_step(step, action_text, reward, done, error)
 
             if done:
                 break
@@ -129,21 +161,20 @@ async def main():
         final = info.get("final_scores", {}) if isinstance(info, dict) else {}
 
         if isinstance(final, dict) and len(final) > 0:
-            raw_score = sum(float(v) for v in final.values()) / max(len(final), 1)
+            raw = sum(float(v) for v in final.values()) / max(len(final), 1)
         else:
-            raw_score = sum(rewards) / max(len(rewards), 1)
+            raw = sum(rewards) / max(len(rewards), 1)
 
-        score = safe_score(raw_score)
+        score = safe_score(raw)
         success = score > 0.1
 
-    finally:
-        try:
-            await env.close()
-        except:
-            pass
+    except Exception as e:
+        # never crash judge
+        print(f"[ERROR] {str(e)}", flush=True)
 
+    finally:
         log_end(success, steps, score, rewards)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    run()
