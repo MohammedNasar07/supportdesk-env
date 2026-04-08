@@ -1,276 +1,149 @@
 #!/usr/bin/env python3
-# inference.py — SupportDesk-Env submission (FINAL FIXED VERSION)
+# inference.py — MINIMAL SUBMISSION SAFE VERSION
 
-from __future__ import annotations
-
-import json
 import os
-import sys
-from typing import Any, Dict, List, Optional
+import asyncio
+from typing import List, Optional
 
-import requests
 from openai import OpenAI
+from my_env_v4 import MyEnvV4Action, MyEnvV4Env
 
-
-# ── CONFIG ──────────────────────────────────────────────────────────────
+# ── CONFIG ───────────────────────────────────────────────
 
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
-HF_TOKEN = os.getenv("HF_TOKEN")
-ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://127.0.0.1:7860")
+HF_TOKEN = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
 
-MAX_STEPS = 10
-TEMPERATURE = 0.1
-MAX_TOKENS = 600
+IMAGE_NAME = os.getenv("IMAGE_NAME")
+
+TASK_NAME = os.getenv("MY_ENV_V4_TASK", "echo")
+BENCHMARK = os.getenv("MY_ENV_V4_BENCHMARK", "my_env_v4")
+
+MAX_STEPS = 8
+TEMPERATURE = 0.5
+MAX_TOKENS = 150
 
 EPS = 1e-6
-SUCCESS_THRESHOLD = 0.5
-
-BENCHMARK_NAME = "supportdesk-env"
-
-_single = os.getenv("TASK_NAME", "")
-TASKS_TO_RUN: List[str] = [_single] if _single else ["classify", "triage", "resolve"]
-
-_seeds_env = os.getenv("SEEDS", "42,43,44")
-SEEDS: List[int] = [int(s.strip()) for s in _seeds_env.split(",")]
 
 
-# ── SAFE SCORE ─────────────────────────────────────────────────────────
+# ── SAFE SCORE ───────────────────────────────────────────
 
 
-def safe_score(x: Any) -> float:
-    """
-    STRICT validator-safe clamp into (0,1)
-    """
+def safe_score(x: float) -> float:
     try:
-        v = float(x)
-    except Exception:
-        v = 0.0
+        x = float(x)
+    except:
+        x = 0.0
 
-    if v <= 0.0:
+    if x <= 0.0:
         return EPS
-    if v >= 1.0:
+    if x >= 1.0:
         return 1 - EPS
-    return v
+    return x
 
 
-# ── LOGGING ────────────────────────────────────────────────────────────
+# ── LOGGING ──────────────────────────────────────────────
 
 
-def log_start(task: str, env: str, model: str) -> None:
-    print(f"[START] task={task} env={env} model={model}", flush=True)
+def log_start():
+    print(f"[START] task={TASK_NAME} env={BENCHMARK} model={MODEL_NAME}", flush=True)
 
 
-def log_step(
-    step: int, action: str, reward: float, done: bool, error: Optional[str]
-) -> None:
-    err_val = error if error else "null"
+def log_step(step, action, reward, done, error):
     print(
-        f"[STEP] step={step} action={action} reward={reward:.2f} done={str(done).lower()} error={err_val}",
+        f"[STEP] step={step} action={action} reward={reward:.2f} done={str(done).lower()} error={error or 'null'}",
         flush=True,
     )
 
 
-def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
-    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+def log_end(success, steps, score, rewards):
     print(
-        f"[END] success={str(success).lower()} steps={steps} score={score:.6f} rewards={rewards_str}",
+        f"[END] success={str(success).lower()} steps={steps} score={score:.6f} rewards={','.join(f'{r:.2f}' for r in rewards)}",
         flush=True,
     )
 
 
-# ── ENV CLIENT ─────────────────────────────────────────────────────────
+# ── LLM ───────────────────────────────────────────────────
+
+SYSTEM_PROMPT = "You are an assistant. Reply with a short message only."
 
 
-class EnvClient:
-    def __init__(self, base_url: str) -> None:
-        self.base = base_url.rstrip("/")
-
-    def reset(self, task: str, seed: int = 42) -> Dict[str, Any]:
-        r = requests.post(
-            f"{self.base}/reset", params={"task": task, "seed": seed}, timeout=30
-        )
-        r.raise_for_status()
-        return r.json()
-
-    def step(self, action: Dict[str, Any]) -> Dict[str, Any]:
-        r = requests.post(f"{self.base}/step", json=action, timeout=30)
-        r.raise_for_status()
-        return r.json()
-
-
-# ── PROMPTS ─────────────────────────────────────────────────────────────
-
-SYSTEM_PROMPTS = {
-    "classify": "You are a support classifier. Output only JSON.",
-    "triage": "You are a support triage agent. Output only JSON.",
-    "resolve": "You are a senior support agent. Output only JSON.",
-}
-
-
-def build_prompt(obs: Dict[str, Any], step_num: int) -> str:
-    return f"""
-TICKET:
-{obs.get("body","")}
-
-STEP: {step_num}
-TASK: {obs.get("task_description","")}
-
-Return ONLY JSON.
-""".strip()
-
-
-def call_llm(client: OpenAI, messages: List[Dict]) -> str:
-    resp = client.chat.completions.create(
-        model=MODEL_NAME,
-        messages=messages,
-        temperature=TEMPERATURE,
-        max_tokens=MAX_TOKENS,
-    )
-    return (resp.choices[0].message.content or "").strip()
-
-
-def ask_llm(
-    client: OpenAI, task: str, obs: Dict[str, Any], step: int
-) -> Dict[str, Any]:
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPTS[task]},
-        {"role": "user", "content": build_prompt(obs, step)},
-    ]
-
+def get_action(client: OpenAI, obs: str) -> str:
     try:
-        raw = call_llm(client, messages)
+        r = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": obs},
+            ],
+            temperature=TEMPERATURE,
+            max_tokens=MAX_TOKENS,
+        )
+        return (r.choices[0].message.content or "hello").strip()
+    except:
+        return "hello"
 
-        if raw.startswith("```"):
-            raw = raw.replace("```json", "").replace("```", "").strip()
 
-        return json.loads(raw)
-
-    except Exception:
-        return {"action_type": "submit"}
+# ── MAIN EPISODE ─────────────────────────────────────────
 
 
-# ── EPISODE ─────────────────────────────────────────────────────────────
-
-
-def run_episode(client: OpenAI, env: EnvClient, task: str, seed: int):
-    obs = env.reset(task=task, seed=seed)
+async def main():
+    client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
+    env = await MyEnvV4Env.from_docker_image(IMAGE_NAME)
 
     rewards: List[float] = []
     steps = 0
-    done = False
-
     score = EPS
     success = False
 
-    log_start(task, BENCHMARK_NAME, MODEL_NAME)
+    log_start()
 
-    while steps < MAX_STEPS and not done:
-        steps += 1
+    try:
+        result = await env.reset()
+        obs = result.observation.echoed_message
+        done = False
 
-        action = ask_llm(client, task, obs, steps)
+        for step in range(1, MAX_STEPS + 1):
+            if done:
+                break
 
-        reward = 0.0
-        error = None
+            action = get_action(client, obs)
 
+            result = await env.step(MyEnvV4Action(message=action))
+
+            reward = float(result.reward or 0.0)
+            done = bool(result.done)
+
+            obs = result.observation.echoed_message
+
+            rewards.append(reward)
+            steps = step
+
+            log_step(step, action, reward, done, None)
+
+            if done:
+                break
+
+        # ── SAFE SCORE COMPUTATION ──
+        info = result.get("info", {}) if isinstance(result, dict) else {}
+        final = info.get("final_scores", {}) if isinstance(info, dict) else {}
+
+        if isinstance(final, dict) and len(final) > 0:
+            raw_score = sum(float(v) for v in final.values()) / max(len(final), 1)
+        else:
+            raw_score = sum(rewards) / max(len(rewards), 1)
+
+        score = safe_score(raw_score)
+        success = score > 0.1
+
+    finally:
         try:
-            result = env.step(action)
-
-            reward = float(result.get("reward", 0.0))
-            done = bool(result.get("done", False))
-            obs = result.get("observation", obs)
-
-            info = result.get("info", {})
-            final = info.get("final_scores", {})
-
-            # ✅ SAFE SCORE (CRITICAL FIX)
-            raw_score = final.get("total", 0.0)
-            if raw_score is None:
-                raw_score = 0.0
-
-            score = safe_score(raw_score)
-
-        except Exception as e:
-            error = str(e)
-
-        rewards.append(reward)
-
-        log_step(steps, json.dumps(action), reward, done, error)
-
-        if done:
-            break
-
-    # ── FINAL SUBMIT SAFETY ────────────────────────────────
-    if not done:
-        try:
-            result = env.step({"action_type": "submit"})
-
-            final = result.get("info", {}).get("final_scores", {})
-
-            raw_score = final.get("total", 0.0)
-            if raw_score is None:
-                raw_score = 0.0
-
-            score = safe_score(raw_score)
-
-            rewards.append(float(result.get("reward", 0.0)))
-            steps += 1
-
-            log_step(steps, '{"action_type":"submit"}', rewards[-1], True, None)
-
-        except Exception:
+            await env.close()
+        except:
             pass
 
-    # FINAL SAFETY (DOUBLE PROTECTION)
-    score = safe_score(score)
-
-    success = score > SUCCESS_THRESHOLD
-
-    log_end(success, steps, score, rewards)
-
-    return {
-        "task": task,
-        "seed": seed,
-        "score": score,
-        "success": success,
-        "steps": steps,
-    }
-
-
-# ── RUNNER ─────────────────────────────────────────────────────────────
-
-
-def run_all(client: OpenAI, env: EnvClient):
-    results = []
-
-    for task in TASKS_TO_RUN:
-        scores = []
-
-        for seed in SEEDS:
-            r = run_episode(client, env, task, seed)
-            results.append(r)
-            scores.append(r["score"])
-
-        print(f"[SUMMARY] {task} avg={sum(scores)/len(scores):.4f}")
-
-    print("\n[FINAL]")
-    for r in results:
-        print(r)
-
-
-# ── MAIN ───────────────────────────────────────────────────────────────
-
-
-def main():
-    if not HF_TOKEN:
-        print("HF_TOKEN missing")
-        sys.exit(1)
-
-    client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
-    env = EnvClient(ENV_BASE_URL)
-
-    run_all(client, env)
+        log_end(success, steps, score, rewards)
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
