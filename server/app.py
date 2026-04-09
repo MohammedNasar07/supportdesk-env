@@ -56,7 +56,7 @@ def health():
 @app.get("/tasks")
 def get_tasks():
     from tasks import TASKS
-    return {"tasks": list(TASKS.values())}
+    return list(TASKS.values())
 
 
 @app.post("/reset")
