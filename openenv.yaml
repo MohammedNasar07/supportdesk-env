@@ -4,7 +4,7 @@ description: >
   Customer Support Ticket Triage: AI agent reads inbound support tickets
   and classifies, prioritizes, routes, and drafts responses.
 
-tags: [openenv, support, triage, classification, nlp, real-world]
+tags: [openenv, support, triage, classification, nlp, real-world, scaler-hackathon, pytorch]
 
 tasks:
   - name: classify
