@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # inference.py — FINAL STABLE VERSION
-
+# UPDATED FINAL VERSION 100%
+git status
 import os
 import requests
 from typing import List, Dict, Any
