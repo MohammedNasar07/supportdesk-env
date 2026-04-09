@@ -53,6 +53,12 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/tasks")
+def get_tasks():
+    from tasks import TASKS
+    return {"tasks": list(TASKS.values())}
+
+
 @app.post("/reset")
 def reset(task: str = "classify", seed: int = 42):
     random.seed(seed)
