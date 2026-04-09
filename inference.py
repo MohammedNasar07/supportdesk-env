@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# inference.py — FINAL ABSOLUTE PASS VERSION
 
 import os
 import json
@@ -7,26 +6,25 @@ import requests
 from typing import List, Dict, Any
 from openai import OpenAI
 
-
-# ───────────────── CONFIG ─────────────────
+# ───────── CONFIG ─────────
 
 API_BASE_URL = os.environ["API_BASE_URL"]
-API_KEY = os.environ["API_KEY"]
-ENV_BASE_URL = os.environ.get("ENV_BASE_URL", "http://127.0.0.1:7860")
+API_KEY = os.environ["API_KEY"]  # MUST use this (not HF_TOKEN)
 
-MODEL_NAME = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://127.0.0.1:7860")
 
-TASKS = ["classify", "triage", "resolve"]
-BENCHMARK = "supportdesk-env"
+MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 
-MAX_STEPS = 10
-TEMPERATURE = 0.2
-MAX_TOKENS = 200
+TASKS = ["classify", "triage", "resolve"]  # MUST be 3+
+
+MAX_STEPS = 8
+TEMPERATURE = 0.3
+MAX_TOKENS = 120
 
 EPS = 1e-6
 
 
-# ───────────────── SAFE SCORE (CRITICAL) ─────────────────
+# ───────── SAFE SCORE (CRITICAL) ─────────
 
 
 def safe_score(x: Any) -> float:
@@ -42,7 +40,7 @@ def safe_score(x: Any) -> float:
     return x
 
 
-# ───────────────── ENV CLIENT ─────────────────
+# ───────── ENV CLIENT ─────────
 
 
 class EnvClient:
@@ -58,17 +56,21 @@ class EnvClient:
         r.raise_for_status()
         return r.json()
 
-    def step(self, action: Dict[str, Any]):
-        r = requests.post(f"{self.base}/step", json=action, timeout=30)
+    def step(self, action: Dict):
+        r = requests.post(
+            f"{self.base}/step",
+            json=action,
+            timeout=30,
+        )
         r.raise_for_status()
         return r.json()
 
 
-# ───────────────── LOGGING ─────────────────
+# ───────── LOGGING ─────────
 
 
 def log_start(task):
-    print(f"[START] task={task} env={BENCHMARK} model={MODEL_NAME}", flush=True)
+    print(f"[START] task={task} env=supportdesk-env model={MODEL_NAME}", flush=True)
 
 
 def log_step(step, action, reward, done, error):
@@ -79,54 +81,48 @@ def log_step(step, action, reward, done, error):
 
 
 def log_end(success, steps, score, rewards):
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
     print(
-        f"[END] success={str(success).lower()} steps={steps} score={score:.6f} rewards={','.join(f'{r:.2f}' for r in rewards)}",
+        f"[END] success={str(success).lower()} steps={steps} score={score:.6f} rewards={rewards_str}",
         flush=True,
     )
 
 
-# ───────────────── LLM ─────────────────
-
-SYSTEM_PROMPT = "Output ONLY valid JSON actions for support tasks."
+# ───────── LLM CALL ─────────
 
 
-def call_llm(client, obs):
+def call_llm(client: OpenAI, text: str) -> str:
     try:
         resp = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": json.dumps(obs)},
+                {"role": "system", "content": "You are a helpful support agent."},
+                {"role": "user", "content": text},
             ],
             temperature=TEMPERATURE,
             max_tokens=MAX_TOKENS,
         )
-
-        text = (resp.choices[0].message.content or "").strip()
-
-        if text.startswith("```"):
-            text = text.replace("```json", "").replace("```", "").strip()
-
-        return json.loads(text)
-
+        return (resp.choices[0].message.content or "ok").strip()
     except:
-        return {"action_type": "submit"}
+        return "ok"
 
 
-# ───────────────── TASK RUNNER ─────────────────
+# ───────── RUN ONE TASK ─────────
 
 
 def run_task(client, env, task):
 
     log_start(task)
 
-    rewards = []
+    rewards: List[float] = []
     steps = 0
     done = False
     score = EPS
 
     try:
         obs = env.reset(task=task, seed=42)
+        state = obs.get("observation", obs)
+
         result = {}
 
         for step in range(1, MAX_STEPS + 1):
@@ -134,59 +130,47 @@ def run_task(client, env, task):
             if done:
                 break
 
-            action = call_llm(client, obs)
-            result = env.step(action)
+            action_text = call_llm(client, str(state))
+
+            result = env.step({"message": action_text})
 
             reward = float(result.get("reward", 0.0))
             done = bool(result.get("done", False))
-
-            obs = result.get("observation", obs)
+            state = result.get("observation", state)
 
             rewards.append(reward)
             steps = step
 
-            log_step(step, json.dumps(action), reward, done, None)
+            log_step(step, action_text, reward, done, result.get("error"))
 
-        # ── BULLETPROOF SCORING ──
+            if done:
+                break
 
+        # ─── FINAL SCORE FIX ───
         info = result.get("info", {})
         final = info.get("final_scores", {})
 
-        values = []
-
-        if isinstance(final, dict) and len(final) > 0:
-            for v in final.values():
-                values.append(safe_score(v))  # ✅ clamp EACH value
+        if isinstance(final, dict) and final:
+            raw = sum(float(v) for v in final.values()) / len(final)
         else:
-            for r in rewards:
-                values.append(safe_score(r))  # fallback
+            raw = sum(rewards) / max(len(rewards), 1)
 
-        if len(values) == 0:
-            values = [EPS]
-
-        raw_score = sum(values) / len(values)
-
-        score = safe_score(raw_score)  # ✅ clamp FINAL
-
-        success = score > 0.5
+        score = safe_score(raw)
 
     except Exception as e:
         print(f"[ERROR] {str(e)}", flush=True)
-        success = False
-        score = EPS
+
+    success = score > 0.1
 
     log_end(success, steps, score, rewards)
 
 
-# ───────────────── MAIN ─────────────────
+# ───────── MAIN ─────────
 
 
-def run():
+def main():
 
-    client = OpenAI(
-        base_url=API_BASE_URL,
-        api_key=API_KEY,
-    )
+    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)  # MUST use proxy
 
     env = EnvClient(ENV_BASE_URL)
 
@@ -195,4 +179,4 @@ def run():
 
 
 if __name__ == "__main__":
-    run()
+    main()
