@@ -2,7 +2,6 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import Dict, List
 import random
-import uvicorn
 
 from graders import grade
 
@@ -139,9 +138,3 @@ def step(action: Action):
         "observation": state.ticket["body"],
         "info": {},
     }
-
-
-# ───────── RUN ─────────
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=7860)
