@@ -6,6 +6,7 @@ from typing import Any, Dict
 
 TASKS: Dict[str, Dict[str, Any]] = {
     "classify": {
+        "id":          "classify",
         "name":        "classify",
         "description": (
             "Read the support ticket and classify it into exactly one category: "
@@ -25,6 +26,7 @@ TASKS: Dict[str, Dict[str, Any]] = {
         ),
     },
     "triage": {
+        "id":          "triage",
         "name":        "triage",
         "description": (
             "Perform full triage: (1) classify category, "
@@ -49,6 +51,7 @@ TASKS: Dict[str, Dict[str, Any]] = {
         ),
     },
     "resolve": {
+        "id":          "resolve",
         "name":        "resolve",
         "description": (
             "Fully resolve the ticket: (1) classify, (2) set priority, "

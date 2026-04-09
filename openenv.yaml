@@ -7,21 +7,24 @@ description: >
 tags: [openenv, support, triage, classification, nlp, real-world, scaler-hackathon, pytorch]
 
 tasks:
-  - name: classify
+  - id: classify
+    name: classify
     description: "Classify the ticket into the correct category"
     difficulty: easy
     max_steps: 4
     required_actions: [classify, submit]
     grader: graders:grade_classify
 
-  - name: triage
+  - id: triage
+    name: triage
     description: "Classify, set priority, and route the ticket"
     difficulty: medium
     max_steps: 6
     required_actions: [classify, set_priority, route, submit]
     grader: graders:grade_triage
 
-  - name: resolve
+  - id: resolve
+    name: resolve
     description: "Full triage plus draft a professional customer response"
     difficulty: hard
     max_steps: 8
