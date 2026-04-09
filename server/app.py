@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import List, Dict
 import random
+import uvicorn
 
 from graders import grade
 
@@ -55,7 +56,6 @@ def health():
 @app.post("/reset")
 def reset(task: str = "classify", seed: int = 42):
     random.seed(seed)
-
     state.ticket = random.choice(TICKETS)
     state.actions = []
     state.step_count = 0
@@ -66,7 +66,6 @@ def reset(task: str = "classify", seed: int = 42):
 
 @app.post("/step")
 def step(action: Action):
-
     if state.done:
         return {"reward": 0.0, "done": True, "observation": "", "info": {}}
 
@@ -115,3 +114,13 @@ def step(action: Action):
         "observation": state.ticket["body"],
         "info": {},
     }
+
+
+# ✅ REQUIRED MAIN FUNCTION
+def main():
+    uvicorn.run("server.app:app", host="0.0.0.0", port=7860)
+
+
+# ✅ REQUIRED ENTRY GUARD
+if __name__ == "__main__":
+    main()
