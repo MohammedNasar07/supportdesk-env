@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional
 import ticket_data
 import graders as graders_module
 from models import ActionType, EnvState, StepResult, TicketObservation, TriageAction
-from tasks import get_task
+from task_definitions import get_task
 
 SAFE_EPS = 0.0001
 

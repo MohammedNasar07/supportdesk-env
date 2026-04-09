@@ -16,7 +16,7 @@ TASKS: Dict[str, Dict[str, Any]] = {
         "difficulty":       "easy",
         "required_actions": ["classify", "submit"],
         "max_steps":        4,
-        "grader":           "graders:grade_classify",
+        "grader":           "tasks.classify.grader:grade",
         "hint": (
             "billing = charges/invoices/plans/pricing. "
             "technical = bugs/errors/API/login/security/integrations. "
@@ -37,7 +37,7 @@ TASKS: Dict[str, Dict[str, Any]] = {
         "difficulty":       "medium",
         "required_actions": ["classify", "set_priority", "route", "submit"],
         "max_steps":        6,
-        "grader":           "graders:grade_triage",
+        "grader":           "tasks.triage.grader:grade",
         "hint": (
             "Priority: critical=production down/security breach/legal threats, "
             "high=billing errors/account locked/urgent deadlines, "
@@ -62,7 +62,7 @@ TASKS: Dict[str, Dict[str, Any]] = {
         "difficulty":       "hard",
         "required_actions": ["classify", "set_priority", "route", "draft_response", "submit"],
         "max_steps":        8,
-        "grader":           "graders:grade_resolve",
+        "grader":           "tasks.resolve.grader:grade",
         "hint": (
             "Good responses: greet the customer, acknowledge the specific issue, "
             "apologize if appropriate, state concrete next steps, professional sign-off. "

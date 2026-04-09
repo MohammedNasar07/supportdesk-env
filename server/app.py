@@ -55,7 +55,7 @@ def health():
 
 @app.get("/tasks")
 def get_tasks():
-    from tasks import TASKS
+    from task_definitions import TASKS
     return list(TASKS.values())
 
 

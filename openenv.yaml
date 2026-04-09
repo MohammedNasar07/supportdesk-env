@@ -13,7 +13,7 @@ tasks:
     difficulty: easy
     max_steps: 4
     required_actions: [classify, submit]
-    grader: graders:grade_classify
+    grader: "tasks.classify.grader:grade"
 
   - id: triage
     name: triage
@@ -21,7 +21,7 @@ tasks:
     difficulty: medium
     max_steps: 6
     required_actions: [classify, set_priority, route, submit]
-    grader: graders:grade_triage
+    grader: "tasks.triage.grader:grade"
 
   - id: resolve
     name: resolve
@@ -29,7 +29,7 @@ tasks:
     difficulty: hard
     max_steps: 8
     required_actions: [classify, set_priority, route, draft_response, submit]
-    grader: graders:grade_resolve
+    grader: "tasks.resolve.grader:grade"
 
 reward:
   type: dense
