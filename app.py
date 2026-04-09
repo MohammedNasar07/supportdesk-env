@@ -1,9 +1,8 @@
-# app.py — FINAL OpenEnv-compatible environment
-
 from fastapi import FastAPI
 from pydantic import BaseModel
-from typing import Dict, Any, List
+from typing import Dict, List
 import random
+import uvicorn
 
 from graders import grade
 
@@ -48,12 +47,19 @@ class EnvState:
 
 state = EnvState()
 
-
-# ───────── REQUEST MODELS ─────────
+# ───────── REQUEST MODEL ─────────
 
 
 class Action(BaseModel):
     message: str
+
+
+# ───────── HEALTH ─────────
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
 
 
 # ───────── RESET ─────────
@@ -84,13 +90,10 @@ def step(action: Action):
         return {"reward": 0.0, "done": True, "observation": "", "info": {}}
 
     state.step_count += 1
-
-    # VERY IMPORTANT: convert LLM message → fake structured actions
     msg = action.message.lower()
 
     parsed_action = {}
 
-    # classify
     if "account" in msg:
         parsed_action = {"action_type": "classify", "category": "account"}
     elif "billing" in msg:
@@ -98,7 +101,6 @@ def step(action: Action):
     elif "technical" in msg or "bug" in msg:
         parsed_action = {"action_type": "classify", "category": "technical"}
 
-    # priority
     if "critical" in msg:
         state.actions.append({"action_type": "set_priority", "priority": "critical"})
     elif "high" in msg:
@@ -106,7 +108,6 @@ def step(action: Action):
     elif "medium" in msg:
         state.actions.append({"action_type": "set_priority", "priority": "medium"})
 
-    # team
     if "support" in msg:
         state.actions.append({"action_type": "route", "team": "support"})
     elif "finance" in msg:
@@ -114,20 +115,16 @@ def step(action: Action):
     elif "engineering" in msg:
         state.actions.append({"action_type": "route", "team": "engineering"})
 
-    # response
     if len(msg) > 20:
         state.actions.append({"action_type": "draft_response", "response_draft": msg})
 
     if parsed_action:
         state.actions.append(parsed_action)
 
-    # DONE CONDITION
     if state.step_count >= 3:
         state.done = True
 
-        scores = grade(
-            "resolve", state.actions, state.ticket  # always use hardest task
-        )
+        scores = grade("resolve", state.actions, state.ticket)
 
         return {
             "reward": scores["total"],
@@ -142,3 +139,9 @@ def step(action: Action):
         "observation": state.ticket["body"],
         "info": {},
     }
+
+
+# ───────── RUN ─────────
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=7860)
