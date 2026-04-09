@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# inference.py — FINAL 100% PASS (MULTI-TASK + PROXY + SAFE SCORE)
+# inference.py — FINAL ABSOLUTE PASS VERSION
 
 import os
 import json
@@ -26,7 +26,7 @@ MAX_TOKENS = 200
 EPS = 1e-6
 
 
-# ───────────────── SAFE SCORE ─────────────────
+# ───────────────── SAFE SCORE (CRITICAL) ─────────────────
 
 
 def safe_score(x: Any) -> float:
@@ -34,6 +34,7 @@ def safe_score(x: Any) -> float:
         x = float(x)
     except:
         x = 0.0
+
     if x <= 0.0:
         return EPS
     if x >= 1.0:
@@ -84,35 +85,9 @@ def log_end(success, steps, score, rewards):
     )
 
 
-# ───────────────── SMART AGENT ─────────────────
+# ───────────────── LLM ─────────────────
 
-SYSTEM_PROMPT = """
-You are a strict support AI.
-
-RULES:
-- Output ONLY JSON
-- lowercase values
-- follow correct sequence
-
-TASKS:
-
-classify:
-1 classify
-2 submit
-
-triage:
-1 classify
-2 set_priority
-3 route
-4 submit
-
-resolve:
-1 classify
-2 set_priority
-3 route
-4 draft_response
-5 submit
-"""
+SYSTEM_PROMPT = "Output ONLY valid JSON actions for support tasks."
 
 
 def call_llm(client, obs):
@@ -138,7 +113,7 @@ def call_llm(client, obs):
         return {"action_type": "submit"}
 
 
-# ───────────────── RUN ONE TASK ─────────────────
+# ───────────────── TASK RUNNER ─────────────────
 
 
 def run_task(client, env, task):
@@ -172,20 +147,33 @@ def run_task(client, env, task):
 
             log_step(step, json.dumps(action), reward, done, None)
 
+        # ── BULLETPROOF SCORING ──
+
         info = result.get("info", {})
         final = info.get("final_scores", {})
 
-        if isinstance(final, dict) and len(final) > 0:
-            raw_score = sum(float(v) for v in final.values()) / len(final)
-        else:
-            raw_score = sum(rewards) / max(len(rewards), 1)
+        values = []
 
-        score = safe_score(raw_score)
+        if isinstance(final, dict) and len(final) > 0:
+            for v in final.values():
+                values.append(safe_score(v))  # ✅ clamp EACH value
+        else:
+            for r in rewards:
+                values.append(safe_score(r))  # fallback
+
+        if len(values) == 0:
+            values = [EPS]
+
+        raw_score = sum(values) / len(values)
+
+        score = safe_score(raw_score)  # ✅ clamp FINAL
+
         success = score > 0.5
 
     except Exception as e:
         print(f"[ERROR] {str(e)}", flush=True)
         success = False
+        score = EPS
 
     log_end(success, steps, score, rewards)
 
