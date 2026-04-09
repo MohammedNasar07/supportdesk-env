@@ -11,24 +11,18 @@ tasks:
     name: classify
     description: "Classify the ticket into the correct category"
     difficulty: easy
-    max_steps: 4
-    required_actions: [classify, submit]
     grader: "tasks.classify.grader:grade"
 
   - id: triage
     name: triage
     description: "Classify, set priority, and route the ticket"
     difficulty: medium
-    max_steps: 6
-    required_actions: [classify, set_priority, route, submit]
     grader: "tasks.triage.grader:grade"
 
   - id: resolve
     name: resolve
     description: "Full triage plus draft a professional customer response"
     difficulty: hard
-    max_steps: 8
-    required_actions: [classify, set_priority, route, draft_response, submit]
     grader: "tasks.resolve.grader:grade"
 
 reward:

@@ -56,7 +56,16 @@ def health():
 @app.get("/tasks")
 def get_tasks():
     from task_definitions import TASKS
-    return list(TASKS.values())
+    strict_tasks = []
+    for t in TASKS.values():
+        strict_tasks.append({
+            "id": t["id"],
+            "name": t["name"],
+            "description": t["description"],
+            "difficulty": t["difficulty"],
+            "grader": t["grader"]
+        })
+    return strict_tasks
 
 
 @app.post("/reset")
