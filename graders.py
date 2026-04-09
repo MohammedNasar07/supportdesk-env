@@ -1,70 +1,85 @@
-# graders.py — FINAL FIXED (STRICT RANGE SAFE)
+# graders.py — ULTRA SAFE VERSION (FINAL PASS GUARANTEED)
 
 from __future__ import annotations
-import re
 from typing import Any, Dict, List, Optional
+import re
 
-EPS = 1e-6
+# HARD LIMITS (avoid 0 and 1 completely)
+MIN_SCORE = 0.01
+MAX_SCORE = 0.99
 
 
 def clamp(x: float) -> float:
-    if x <= 0.0:
-        return EPS
-    if x >= 1.0:
-        return 1 - EPS
+    try:
+        x = float(x)
+    except:
+        return MIN_SCORE
+
+    if x <= MIN_SCORE:
+        return MIN_SCORE
+    if x >= MAX_SCORE:
+        return MAX_SCORE
+
     return round(x, 6)
 
 
 _PRIORITY_ORDER = ["low", "medium", "high", "critical"]
+
 
 # ── SAFE SCORERS ─────────────────────────
 
 
 def _category_score(predicted: Optional[str], ground_truth: str) -> float:
     if not predicted:
-        return clamp(0.05)
-    return clamp(0.95 if predicted.lower() == ground_truth.lower() else 0.2)
+        return MIN_SCORE
+
+    if predicted.lower() == ground_truth.lower():
+        return 0.9  # NOT 1.0
+    return 0.3
 
 
 def _priority_score(predicted: Optional[str], ground_truth: str) -> float:
     if not predicted:
-        return clamp(0.05)
+        return MIN_SCORE
 
     pred = predicted.lower()
     gt = ground_truth.lower()
 
     if pred not in _PRIORITY_ORDER or gt not in _PRIORITY_ORDER:
-        return clamp(0.1)
+        return 0.2
 
     diff = abs(_PRIORITY_ORDER.index(pred) - _PRIORITY_ORDER.index(gt))
 
     if diff == 0:
-        return clamp(0.95)
+        return 0.9
     elif diff == 1:
-        return clamp(0.6)
+        return 0.6
     else:
-        return clamp(0.2)
+        return 0.3
 
 
 def _team_score(predicted: Optional[str], ground_truth: str) -> float:
     if not predicted:
-        return clamp(0.05)
-    return clamp(0.95 if predicted.lower() == ground_truth.lower() else 0.2)
+        return MIN_SCORE
+
+    if predicted.lower() == ground_truth.lower():
+        return 0.9
+    return 0.3
 
 
 def _response_quality_score(response: Optional[str], keywords: List[str]) -> float:
     if not response:
-        return clamp(0.1)
+        return 0.2
 
     text = response.lower()
-    score = 0.2
+    score = 0.3
 
     if len(text) > 50:
         score += 0.2
 
     if keywords:
         hits = sum(1 for k in keywords if k.lower() in text)
-        score += 0.4 * (hits / len(keywords))
+        score += 0.3 * (hits / len(keywords))
 
     if "thank" in text or "hello" in text:
         score += 0.2
@@ -81,29 +96,30 @@ def grade_classify(actions_taken, ticket):
         if a.get("action_type") == "classify":
             category = a.get("category")
 
-    cat = _category_score(category, ticket["gt_category"])
+    total = _category_score(category, ticket["gt_category"])
 
-    return {"total": clamp(cat)}
+    return {"total": clamp(total)}
 
 
 def grade_triage(actions_taken, ticket):
     category = priority = team = None
 
     for a in actions_taken:
-        if a.get("action_type") == "classify":
+        t = a.get("action_type")
+        if t == "classify":
             category = a.get("category")
-        elif a.get("action_type") == "set_priority":
+        elif t == "set_priority":
             priority = a.get("priority")
-        elif a.get("action_type") == "route":
+        elif t == "route":
             team = a.get("team")
 
     cat = _category_score(category, ticket["gt_category"])
     pri = _priority_score(priority, ticket["gt_priority"])
     tm = _team_score(team, ticket["gt_team"])
 
-    total = clamp(0.4 * cat + 0.3 * pri + 0.3 * tm)
+    total = (0.4 * cat) + (0.3 * pri) + (0.3 * tm)
 
-    return {"total": total}
+    return {"total": clamp(total)}
 
 
 def grade_resolve(actions_taken, ticket):
@@ -125,9 +141,9 @@ def grade_resolve(actions_taken, ticket):
     tm = _team_score(team, ticket["gt_team"])
     resp = _response_quality_score(response, ticket.get("response_keywords", []))
 
-    total = clamp(0.2 * cat + 0.15 * pri + 0.15 * tm + 0.5 * resp)
+    total = (0.2 * cat) + (0.15 * pri) + (0.15 * tm) + (0.5 * resp)
 
-    return {"total": total}
+    return {"total": clamp(total)}
 
 
 def grade(task_name, actions_taken, ticket):
