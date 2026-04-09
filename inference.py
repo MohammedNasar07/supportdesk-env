@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# inference.py — FINAL 100% VALIDATOR SAFE VERSION
+# inference.py — FINAL MULTI-TASK VALIDATOR SAFE
 
 import os
 import requests
@@ -7,7 +7,7 @@ from typing import List, Dict, Any
 from openai import OpenAI
 
 
-# ───────────────── CONFIG ─────────────────
+# ───────── CONFIG ─────────
 
 API_BASE_URL = os.getenv("API_BASE_URL")
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
@@ -15,7 +15,8 @@ HF_TOKEN = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
 
 ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://127.0.0.1:7860")
 
-TASK_NAME = os.getenv("TASK_NAME", "classify")
+TASKS = ["classify", "triage", "resolve"]  # ✅ MUST
+
 BENCHMARK = "supportdesk-env"
 
 MAX_STEPS = 8
@@ -25,55 +26,47 @@ MAX_TOKENS = 150
 EPS = 1e-6
 
 
-# ───────────────── SAFE SCORE ─────────────────
+# ───────── SAFE SCORE ─────────
 
 
-def safe_score(x: Any) -> float:
+def safe_score(x):
     try:
         x = float(x)
     except:
-        x = 0.0
+        x = 0.5
 
-    # STRICT clamp → (0,1)
     if x <= 0.0:
         return EPS
     if x >= 1.0:
         return 1 - EPS
-
     return x
 
 
-# ───────────────── ENV CLIENT ─────────────────
+# ───────── ENV CLIENT ─────────
 
 
 class EnvClient:
-    def __init__(self, base_url: str):
+    def __init__(self, base_url):
         self.base = base_url.rstrip("/")
 
-    def reset(self, task: str, seed: int = 42) -> Dict[str, Any]:
+    def reset(self, task, seed=42):
         r = requests.post(
-            f"{self.base}/reset",
-            params={"task": task, "seed": seed},
-            timeout=30,
+            f"{self.base}/reset", params={"task": task, "seed": seed}, timeout=30
         )
         r.raise_for_status()
         return r.json()
 
-    def step(self, action: Dict[str, Any]) -> Dict[str, Any]:
-        r = requests.post(
-            f"{self.base}/step",
-            json=action,
-            timeout=30,
-        )
+    def step(self, action):
+        r = requests.post(f"{self.base}/step", json=action, timeout=30)
         r.raise_for_status()
         return r.json()
 
 
-# ───────────────── LOGGING ─────────────────
+# ───────── LOGGING ─────────
 
 
-def log_start():
-    print(f"[START] task={TASK_NAME} env={BENCHMARK} model={MODEL_NAME}", flush=True)
+def log_start(task):
+    print(f"[START] task={task} env={BENCHMARK} model={MODEL_NAME}", flush=True)
 
 
 def log_step(step, action, reward, done, error):
@@ -84,21 +77,20 @@ def log_step(step, action, reward, done, error):
 
 
 def log_end(success, steps, score, rewards):
-    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
     print(
-        f"[END] success={str(success).lower()} steps={steps} score={score:.6f} rewards={rewards_str}",
+        f"[END] success={str(success).lower()} steps={steps} score={score:.6f} rewards={','.join(f'{r:.2f}' for r in rewards)}",
         flush=True,
     )
 
 
-# ───────────────── LLM ─────────────────
+# ───────── LLM ─────────
 
-SYSTEM_PROMPT = "You are a helpful support agent. Respond briefly."
+SYSTEM_PROMPT = "You are a helpful support agent."
 
 
-def call_llm(client: OpenAI, obs: str) -> str:
+def call_llm(client, obs):
     try:
-        resp = client.chat.completions.create(
+        r = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
@@ -107,38 +99,31 @@ def call_llm(client: OpenAI, obs: str) -> str:
             temperature=TEMPERATURE,
             max_tokens=MAX_TOKENS,
         )
-        return (resp.choices[0].message.content or "hello").strip()
+        return (r.choices[0].message.content or "hello").strip()
     except:
         return "hello"
 
 
-# ───────────────── MAIN ─────────────────
+# ───────── RUN ONE TASK ─────────
 
 
-def run():
-    if not API_BASE_URL or not HF_TOKEN:
-        raise RuntimeError("Missing API_BASE_URL or HF_TOKEN")
+def run_task(client, env, task):
 
-    client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
-    env = EnvClient(ENV_BASE_URL)
+    log_start(task)
 
-    log_start()
-
-    rewards: List[float] = []
+    rewards = []
     steps = 0
     done = False
     score = EPS
     success = False
 
     try:
-        obs = env.reset(task=TASK_NAME, seed=42)
+        obs = env.reset(task=task, seed=42)
         state = obs.get("observation", obs)
 
         last_result = {}
 
         for step in range(1, MAX_STEPS + 1):
-            if done:
-                break
 
             action_text = call_llm(client, state)
 
@@ -159,33 +144,41 @@ def run():
             if done:
                 break
 
-        # ───── SAFE SCORE COMPUTATION ─────
+        # score
+        info = last_result.get("info", {})
+        final = info.get("final_scores", {})
 
-        info = last_result.get("info", {}) if isinstance(last_result, dict) else {}
-        final = info.get("final_scores", {}) if isinstance(info, dict) else {}
-
-        if isinstance(final, dict) and len(final) > 0:
-            raw = sum(float(v) for v in final.values()) / max(len(final), 1)
+        if final:
+            raw = sum(float(v) for v in final.values()) / len(final)
         else:
-            # fallback: use rewards
-            if len(rewards) == 0:
-                raw = 0.5  # SAFE DEFAULT
-            else:
-                raw = sum(rewards) / len(rewards)
+            raw = sum(rewards) / max(len(rewards), 1)
 
-        # FINAL HARD CLAMP
         score = safe_score(raw)
-        score = max(EPS, min(score, 1 - EPS))
-
         success = score > 0.1
 
     except Exception as e:
-        print(f"[ERROR] {str(e)}", flush=True)
+        print(f"[ERROR] {e}", flush=True)
         score = EPS
         success = False
 
     finally:
         log_end(success, steps, score, rewards)
+
+
+# ───────── MAIN ─────────
+
+
+def run():
+
+    if not API_BASE_URL or not HF_TOKEN:
+        raise RuntimeError("Missing API_BASE_URL / HF_TOKEN")
+
+    client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
+    env = EnvClient(ENV_BASE_URL)
+
+    # ✅ RUN ALL TASKS
+    for task in TASKS:
+        run_task(client, env, task)
 
 
 if __name__ == "__main__":
