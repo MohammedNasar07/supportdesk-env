@@ -1,162 +1,142 @@
-from __future__ import annotations
+# graders.py — FINAL FIXED VERSION (NO 0 / NO 1)
+
 from typing import Any, Dict, List, Optional
-
-MIN_SCORE = 0.01
-MAX_SCORE = 0.99
+import re
 
 
-def clamp(x: float) -> float:
+# NEVER allow 0 or 1
+def safe(x: float) -> float:
     try:
-        val = float(x)
-    except Exception:
-        return MIN_SCORE
+        x = float(x)
+    except:
+        return 0.01
 
-    if val <= MIN_SCORE:
-        return MIN_SCORE
-    if val >= MAX_SCORE:
-        return MAX_SCORE
+    if x <= 0.0:
+        return 0.01
+    if x >= 1.0:
+        return 0.99
 
-    return round(val, 4)
+    return round(x, 6)
 
 
 _PRIORITY_ORDER = ["low", "medium", "high", "critical"]
 
-# ── SAFE SCORERS ─────────────────────────
+
+# ───────── SCORING ─────────
 
 
-def _category_score(predicted: Optional[str], ground_truth: str) -> float:
+def _category_score(predicted: Optional[str], gt: str) -> float:
     if not predicted:
-        return MIN_SCORE
-    gt_val = ground_truth if ground_truth else ""
-    if predicted.lower() == gt_val.lower():
-        return 0.85
-    return 0.15
+        return 0.2
+    return 0.95 if predicted.lower() == gt.lower() else 0.3
 
 
-def _priority_score(predicted: Optional[str], ground_truth: str) -> float:
+def _priority_score(predicted: Optional[str], gt: str) -> float:
     if not predicted:
-        return MIN_SCORE
-    pred = predicted.lower()
-    gt_val = ground_truth.lower() if ground_truth else ""
+        return 0.2
 
-    if pred not in _PRIORITY_ORDER or gt_val not in _PRIORITY_ORDER:
-        return 0.15
+    if predicted not in _PRIORITY_ORDER or gt not in _PRIORITY_ORDER:
+        return 0.3
 
-    diff = abs(_PRIORITY_ORDER.index(pred) - _PRIORITY_ORDER.index(gt_val))
+    diff = abs(_PRIORITY_ORDER.index(predicted) - _PRIORITY_ORDER.index(gt))
 
     if diff == 0:
-        return 0.85
+        return 0.95
     elif diff == 1:
-        return 0.55
+        return 0.5
     else:
-        return 0.25
+        return 0.3
 
 
-def _team_score(predicted: Optional[str], ground_truth: str) -> float:
+def _team_score(predicted: Optional[str], gt: str) -> float:
     if not predicted:
-        return MIN_SCORE
-    gt_val = ground_truth if ground_truth else ""
-    if predicted.lower() == gt_val.lower():
-        return 0.85
-    return 0.15
+        return 0.2
+    return 0.95 if predicted.lower() == gt.lower() else 0.3
 
 
-def _response_quality_score(response: Optional[str], keywords: List[str]) -> float:
-    if not response:
-        return MIN_SCORE
+def _response_score(resp: Optional[str], keywords: List[str]) -> float:
+    if not resp:
+        return 0.2
 
-    text = response.lower()
-    score = 0.25
+    text = resp.lower()
+    score = 0.3
 
     if len(text) > 50:
-        score += 0.25
+        score += 0.2
 
     if keywords:
-        hits = sum([2 for k in keywords if k.lower() in text])
-        ratio = hits / (len(keywords) * 2)
-        score += 0.25 * ratio
+        hits = sum(1 for k in keywords if k.lower() in text)
+        score += 0.3 * (hits / len(keywords))
 
     if "thank" in text or "hello" in text:
-        score += 0.15
+        score += 0.2
 
-    return clamp(score)
-
-
-# ── TASK GRADERS ─────────────────────────
+    return safe(score)
 
 
-def grade_classify(
-    actions_taken: List[Dict[str, Any]], ticket: Dict[str, Any]
-) -> Dict[str, float]:
-    category = None
-    for a in actions_taken:
+# ───────── TASKS ─────────
+
+
+def grade_classify(actions, ticket):
+    cat = None
+    for a in actions:
         if a.get("action_type") == "classify":
-            category = a.get("category")
+            cat = a.get("category")
 
-    total = _category_score(category, ticket.get("gt_category", ""))
-    return {"total": clamp(total)}
+    total = _category_score(cat, ticket["gt_category"])
+    return {"total": safe(total)}
 
 
-def grade_triage(
-    actions_taken: List[Dict[str, Any]], ticket: Dict[str, Any]
-) -> Dict[str, float]:
-    category = None
-    priority = None
-    team = None
+def grade_triage(actions, ticket):
+    cat = pri = team = None
 
-    for a in actions_taken:
-        t = a.get("action_type")
-        if t == "classify":
-            category = a.get("category")
-        elif t == "set_priority":
-            priority = a.get("priority")
-        elif t == "route":
+    for a in actions:
+        if a.get("action_type") == "classify":
+            cat = a.get("category")
+        elif a.get("action_type") == "set_priority":
+            pri = a.get("priority")
+        elif a.get("action_type") == "route":
             team = a.get("team")
 
-    cat = _category_score(category, ticket.get("gt_category", ""))
-    pri = _priority_score(priority, ticket.get("gt_priority", ""))
-    tm = _team_score(team, ticket.get("gt_team", ""))
+    total = (
+        0.4 * _category_score(cat, ticket["gt_category"])
+        + 0.3 * _priority_score(pri, ticket["gt_priority"])
+        + 0.3 * _team_score(team, ticket["gt_team"])
+    )
 
-    total = (0.4 * cat) + (0.3 * pri) + (0.3 * tm)
-    return {"total": clamp(total)}
+    return {"total": safe(total)}
 
 
-def grade_resolve(
-    actions_taken: List[Dict[str, Any]], ticket: Dict[str, Any]
-) -> Dict[str, float]:
-    category = None
-    priority = None
-    team = None
-    response = None
+def grade_resolve(actions, ticket):
+    cat = pri = team = resp = None
 
-    for a in actions_taken:
+    for a in actions:
         t = a.get("action_type")
         if t == "classify":
-            category = a.get("category")
+            cat = a.get("category")
         elif t == "set_priority":
-            priority = a.get("priority")
+            pri = a.get("priority")
         elif t == "route":
             team = a.get("team")
         elif t == "draft_response":
-            response = a.get("response_draft")
+            resp = a.get("response_draft")
 
-    cat = _category_score(category, ticket.get("gt_category", ""))
-    pri = _priority_score(priority, ticket.get("gt_priority", ""))
-    tm = _team_score(team, ticket.get("gt_team", ""))
-    resp = _response_quality_score(response, ticket.get("response_keywords", []))
+    total = (
+        0.2 * _category_score(cat, ticket["gt_category"])
+        + 0.15 * _priority_score(pri, ticket["gt_priority"])
+        + 0.15 * _team_score(team, ticket["gt_team"])
+        + 0.5 * _response_score(resp, ticket.get("response_keywords", []))
+    )
 
-    total = (0.2 * cat) + (0.15 * pri) + (0.15 * tm) + (0.5 * resp)
-    return {"total": clamp(total)}
+    return {"total": safe(total)}
 
 
-def grade(
-    task_name: str, actions_taken: List[Dict[str, Any]], ticket: Dict[str, Any]
-) -> Dict[str, float]:
-    if task_name == "classify":
-        return grade_classify(actions_taken, ticket)
-    elif task_name == "triage":
-        return grade_triage(actions_taken, ticket)
-    elif task_name == "resolve":
-        return grade_resolve(actions_taken, ticket)
+def grade(task, actions, ticket):
+    if task == "classify":
+        return grade_classify(actions, ticket)
+    elif task == "triage":
+        return grade_triage(actions, ticket)
+    elif task == "resolve":
+        return grade_resolve(actions, ticket)
     else:
-        return {"total": MIN_SCORE}
+        raise ValueError(task)

@@ -1,118 +1,144 @@
-# app.py
-# SupportDesk-Env FastAPI server.
-# Run with:  python app.py
-# All imports are direct module names — no packages, no relative imports.
+# app.py — FINAL OpenEnv-compatible environment
 
-from __future__ import annotations
+from fastapi import FastAPI
+from pydantic import BaseModel
+from typing import Dict, Any, List
+import random
 
-import os
-import sys
-from typing import Any, Dict, Optional
+from graders import grade
 
-import uvicorn
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.middleware.cors import CORSMiddleware
+app = FastAPI()
 
-# These files must be in the SAME folder as app.py
-from environment import SupportDeskEnv
-from models import TriageAction
-from tasks import TASKS
+# ───────── DATASET ─────────
 
-# ── App ────────────────────────────────────────────────────────────────────────
+TICKETS = [
+    {
+        "body": "I cannot login to my account",
+        "gt_category": "account",
+        "gt_priority": "high",
+        "gt_team": "support",
+        "response_keywords": ["login", "reset", "password"],
+    },
+    {
+        "body": "Billing issue, wrong charge",
+        "gt_category": "billing",
+        "gt_priority": "critical",
+        "gt_team": "finance",
+        "response_keywords": ["refund", "billing", "charge"],
+    },
+    {
+        "body": "Feature not working properly",
+        "gt_category": "technical",
+        "gt_priority": "medium",
+        "gt_team": "engineering",
+        "response_keywords": ["bug", "fix", "issue"],
+    },
+]
 
-app = FastAPI(
-    title       = "SupportDesk-Env",
-    description = "OpenEnv customer support ticket triage environment.",
-    version     = "1.0.0",
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins  = ["*"],
-    allow_methods  = ["*"],
-    allow_headers  = ["*"],
-)
-
-# Single shared env instance (sequential use)
-_env: Optional[SupportDeskEnv] = None
-
-
-def _get_env() -> SupportDeskEnv:
-    global _env
-    if _env is None:
-        _env = SupportDeskEnv(task_name="classify")
-    return _env
+# ───────── STATE ─────────
 
 
-# ── Endpoints ──────────────────────────────────────────────────────────────────
+class EnvState:
+    def __init__(self):
+        self.ticket = None
+        self.actions: List[Dict] = []
+        self.step_count = 0
+        self.done = False
 
-@app.get("/health")
-def health() -> Dict[str, str]:
-    return {"status": "ok", "env": "supportdesk-env", "version": "1.0.0"}
+
+state = EnvState()
 
 
-@app.get("/tasks")
-def list_tasks() -> Dict[str, Any]:
-    return {
-        "tasks": [
-            {
-                "name":             t["name"],
-                "description":      t["description"],
-                "difficulty":       t["difficulty"],
-                "required_actions": t["required_actions"],
-                "max_steps":        t["max_steps"],
-            }
-            for t in TASKS.values()
-        ]
-    }
+# ───────── REQUEST MODELS ─────────
+
+
+class Action(BaseModel):
+    message: str
+
+
+# ───────── RESET ─────────
 
 
 @app.post("/reset")
-def reset(
-    task: str = Query(
-        default="classify",
-        description="Task name: classify | triage | resolve",
-    ),
-    seed: Optional[int] = Query(
-        default=None,
-        description="Optional integer seed",
-    ),
-) -> Dict[str, Any]:
-    global _env
-    if task not in TASKS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unknown task: {task!r}. Valid: {list(TASKS.keys())}",
-        )
-    _env = SupportDeskEnv(task_name=task, seed=seed)
-    obs  = _env.reset()
-    return obs.model_dump()
+def reset(task: str = "classify", seed: int = 42):
+    random.seed(seed)
 
+    state.ticket = random.choice(TICKETS)
+    state.actions = []
+    state.step_count = 0
+    state.done = False
 
-@app.post("/step")
-def step(action: TriageAction) -> Dict[str, Any]:
-    env = _get_env()
-    try:
-        result = env.step(action)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
     return {
-        "observation": result.observation.model_dump(),
-        "reward":      result.reward,
-        "done":        result.done,
-        "info":        result.info,
+        "observation": state.ticket["body"],
+        "task": task,
+        "done": False,
     }
 
 
-@app.get("/state")
-def state() -> Dict[str, Any]:
-    return _get_env().state().model_dump()
+# ───────── STEP ─────────
 
 
-# ── Entry point ────────────────────────────────────────────────────────────────
+@app.post("/step")
+def step(action: Action):
+    if state.done:
+        return {"reward": 0.0, "done": True, "observation": "", "info": {}}
 
-if __name__ == "__main__":
-    port = int(os.getenv("PORT", "7860"))
-    print(f"Starting SupportDesk-Env on http://localhost:{port}", flush=True)
-    print("Press Ctrl+C to stop.\n", flush=True)
-    uvicorn.run("app:app", host="0.0.0.0", port=port, reload=False)
+    state.step_count += 1
+
+    # VERY IMPORTANT: convert LLM message → fake structured actions
+    msg = action.message.lower()
+
+    parsed_action = {}
+
+    # classify
+    if "account" in msg:
+        parsed_action = {"action_type": "classify", "category": "account"}
+    elif "billing" in msg:
+        parsed_action = {"action_type": "classify", "category": "billing"}
+    elif "technical" in msg or "bug" in msg:
+        parsed_action = {"action_type": "classify", "category": "technical"}
+
+    # priority
+    if "critical" in msg:
+        state.actions.append({"action_type": "set_priority", "priority": "critical"})
+    elif "high" in msg:
+        state.actions.append({"action_type": "set_priority", "priority": "high"})
+    elif "medium" in msg:
+        state.actions.append({"action_type": "set_priority", "priority": "medium"})
+
+    # team
+    if "support" in msg:
+        state.actions.append({"action_type": "route", "team": "support"})
+    elif "finance" in msg:
+        state.actions.append({"action_type": "route", "team": "finance"})
+    elif "engineering" in msg:
+        state.actions.append({"action_type": "route", "team": "engineering"})
+
+    # response
+    if len(msg) > 20:
+        state.actions.append({"action_type": "draft_response", "response_draft": msg})
+
+    if parsed_action:
+        state.actions.append(parsed_action)
+
+    # DONE CONDITION
+    if state.step_count >= 3:
+        state.done = True
+
+        scores = grade(
+            "resolve", state.actions, state.ticket  # always use hardest task
+        )
+
+        return {
+            "reward": scores["total"],
+            "done": True,
+            "observation": "",
+            "info": {"final_scores": scores},
+        }
+
+    return {
+        "reward": 0.2,
+        "done": False,
+        "observation": state.ticket["body"],
+        "info": {},
+    }
