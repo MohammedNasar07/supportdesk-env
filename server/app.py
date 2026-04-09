@@ -1,13 +1,11 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-from typing import Dict, List
+from typing import List, Dict
 import random
 
 from graders import grade
 
 app = FastAPI()
-
-# ───────── DATASET ─────────
 
 TICKETS = [
     {
@@ -33,8 +31,6 @@ TICKETS = [
     },
 ]
 
-# ───────── STATE ─────────
-
 
 class EnvState:
     def __init__(self):
@@ -46,30 +42,14 @@ class EnvState:
 
 state = EnvState()
 
-# ───────── REQUEST MODEL ─────────
-
 
 class Action(BaseModel):
     message: str
 
 
-# ───────── HEALTH ─────────
-
-
 @app.get("/health")
 def health():
     return {"status": "ok"}
-
-
-# ───────── ROOT ─────────
-
-
-@app.get("/")
-def root():
-    return {"message": "Support Desk Running"}
-
-
-# ───────── RESET ─────────
 
 
 @app.post("/reset")
@@ -81,93 +61,57 @@ def reset(task: str = "classify", seed: int = 42):
     state.step_count = 0
     state.done = False
 
-    return {
-        "observation": state.ticket["body"],
-        "task": task,
-        "done": False,
-    }
-
-
-# ───────── STEP ─────────
+    return {"observation": state.ticket["body"], "done": False}
 
 
 @app.post("/step")
 def step(action: Action):
-    try:
-        if state.done:
-            return {"reward": 0.0, "done": True, "observation": "", "info": {}}
 
-        state.step_count += 1
-        msg = (action.message or "").lower()
+    if state.done:
+        return {"reward": 0.0, "done": True, "observation": "", "info": {}}
 
-        parsed_action = {}
+    state.step_count += 1
+    msg = action.message.lower()
 
-        if "account" in msg:
-            parsed_action = {"action_type": "classify", "category": "account"}
-        elif "billing" in msg:
-            parsed_action = {"action_type": "classify", "category": "billing"}
-        elif "technical" in msg or "bug" in msg:
-            parsed_action = {"action_type": "classify", "category": "technical"}
+    if "account" in msg:
+        state.actions.append({"action_type": "classify", "category": "account"})
+    elif "billing" in msg:
+        state.actions.append({"action_type": "classify", "category": "billing"})
+    elif "technical" in msg:
+        state.actions.append({"action_type": "classify", "category": "technical"})
 
-        if "critical" in msg:
-            state.actions.append(
-                {"action_type": "set_priority", "priority": "critical"}
-            )
-        elif "high" in msg:
-            state.actions.append({"action_type": "set_priority", "priority": "high"})
-        elif "medium" in msg:
-            state.actions.append({"action_type": "set_priority", "priority": "medium"})
+    if "critical" in msg:
+        state.actions.append({"action_type": "set_priority", "priority": "critical"})
+    elif "high" in msg:
+        state.actions.append({"action_type": "set_priority", "priority": "high"})
+    elif "medium" in msg:
+        state.actions.append({"action_type": "set_priority", "priority": "medium"})
 
-        if "support" in msg:
-            state.actions.append({"action_type": "route", "team": "support"})
-        elif "finance" in msg:
-            state.actions.append({"action_type": "route", "team": "finance"})
-        elif "engineering" in msg:
-            state.actions.append({"action_type": "route", "team": "engineering"})
+    if "support" in msg:
+        state.actions.append({"action_type": "route", "team": "support"})
+    elif "finance" in msg:
+        state.actions.append({"action_type": "route", "team": "finance"})
+    elif "engineering" in msg:
+        state.actions.append({"action_type": "route", "team": "engineering"})
 
-        if len(msg) > 20:
-            state.actions.append(
-                {"action_type": "draft_response", "response_draft": msg}
-            )
+    if len(msg) > 20:
+        state.actions.append({"action_type": "draft_response", "response_draft": msg})
 
-        if parsed_action:
-            state.actions.append(parsed_action)
+    if state.step_count >= 3:
+        state.done = True
 
-        if state.step_count >= 3:
-            state.done = True
-
-            scores = grade("resolve", state.actions, state.ticket)
-
-            return {
-                "reward": scores["total"],
-                "done": True,
-                "observation": "",
-                "info": {"final_scores": scores},
-            }
+        scores = grade("resolve", state.actions, state.ticket)
 
         return {
-            "reward": 0.2,
-            "done": False,
-            "observation": state.ticket["body"],
-            "info": {},
-        }
-
-    except Exception as e:
-        return {
-            "reward": 0.0,
+            "reward": scores["total"],
             "done": True,
             "observation": "",
-            "info": {"error": str(e)},
+            "info": {"final_scores": scores},
         }
 
-
-# ───────── STATE ─────────
-
-
-@app.get("/state")
-def get_state():
     return {
-        "step": state.step_count,
-        "done": state.done,
-        "actions": state.actions,
+        "reward": 0.2,
+        "done": False,
+        "observation": state.ticket["body"],
+        "info": {},
     }
