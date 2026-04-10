@@ -1,17 +1,14 @@
 import os
 import uvicorn
 import gradio as gr
+from fastapi import FastAPI
+from pydantic import BaseModel
+from typing import List, Dict, Optional
 from app_ui import demo
 from src.env.support_env import SupportDeskEnv
 from src.env.models import TriageAction
 
 app = FastAPI()
-
-# Mount Gradio UI at the root or /ui
-# For Hugging Face Spaces, the root / is often best, but the validator needs API at root.
-# So we mount Gradio at /ui and keep root for API, or vice versa?
-# Actually, Gradio usually handles the root. Let's mount it at / and see.
-app = gr.mount_gradio_app(app, demo, path="/")
 
 # Global environment instance (lazy loaded)
 _env: Optional[SupportDeskEnv] = None
@@ -49,19 +46,15 @@ def get_tasks():
 def reset(task: str = "classify", seed: int = 42):
     env = get_env(task)
     obs = env.reset()
+    # Note: TicketObservation has 'body' field, reset response needs 'observation'
     return {"observation": obs.body, "done": False}
 
 @app.post("/step")
 def step(action: Action):
-    # This maps the flat string action from the evaluator to the internal TriageAction
-    # For a winning submission, we usually want to handle both structured and unstructured input
     env = get_env()
-    
-    # Heuristic mapping for the evaluator's "message" action
     from src.env.models import ActionType
     msg = action.message.lower()
     
-    # Determine the most likely action type from the message
     action_type = ActionType.SUBMIT
     if "classify" in msg or "category" in msg:
         action_type = ActionType.CLASSIFY
@@ -84,6 +77,10 @@ def step(action: Action):
         "observation": result.observation.body,
         "info": result.info
     }
+
+# Mount Gradio UI at the root
+# We do this AFTER defining all FastAPI routes
+app = gr.mount_gradio_app(app, demo, path="/")
 
 def main():
     port = int(os.getenv("PORT", 7860))
