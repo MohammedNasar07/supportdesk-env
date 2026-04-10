@@ -37,7 +37,7 @@ def grade_resolve(ticket: Any, action: Any) -> dict:
     resp = 0.99 if len(action.response) > 50 else 0.01
     return {"total_score": clamp(0.2 * base + 0.4 * pol + 0.4 * resp)}
 
-def grade_episode(ticket: Any, action: Any, task: str = \"triage\") -> dict:
+def grade_episode(ticket: Any, action: Any, task: str = "triage") -> dict:
     if task == "classify":
         return grade_classify(ticket, action)
     if task == "triage":
