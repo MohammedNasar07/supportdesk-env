@@ -4,7 +4,7 @@ from .policy import policy_check
 
 def clamp(score: float) -> float:
     """Strictly enforce (0, 1) range to avoid validator failures."""
-    return max(0.01, min(0.99, float(score)))
+    return round(max(0.01, min(0.99, float(score))), 4)
 
 def grade_classify(ticket: Any, action: Any) -> float:
     # Coerce to Pydantic models for robust attribute access (handles dict or object)

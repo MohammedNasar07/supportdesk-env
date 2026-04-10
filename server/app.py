@@ -84,6 +84,8 @@ def step(action: Action):
         }
     
     obs, reward, done, info = env.step(action_dict)
+    # Explicitly clamp reward for validator compliance
+    reward = round(max(0.01, min(0.99, float(reward))), 4)
     return {
         "reward": reward,
         "done": done,
