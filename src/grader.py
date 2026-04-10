@@ -3,7 +3,7 @@ from .schemas import Ticket, AgentAction
 from .policy import policy_check
 
 def clamp(score: float) -> float:
-    \"\"\"Strictly enforce (0, 1) range to avoid validator failures.\"\"\"
+    """Strictly enforce (0, 1) range to avoid validator failures."""
     return max(0.01, min(0.99, float(score)))
 
 def grade_classify(ticket: Any, action: Any) -> dict:
