@@ -1,58 +1,33 @@
----
-title: SupportFlow Arena
-emoji: 🏆
-colorFrom: blue
-colorTo: indigo
-sdk: gradio
-sdk_version: 5.16.1
-app_file: app.py
-pinned: false
----
+# SupportFlow Arena: OpenEnv Hackathon Project
 
-# 🏆 SupportFlow Arena: OpenEnv Winner's Edition
+## Overview
+SupportFlow Arena is a deterministic customer support triage environment. An AI agent reads support tickets and outputs structured JSON decisions (category, priority, clarification, escalation, and response).
 
-SupportFlow Arena is a professional reinforcement learning environment designed to train and benchmark AI customer support agents. It simulates a high-stakes support desk where agents must categorize tickets, prioritize urgency, detect security risks, and draft policy-compliant responses.
+## Setup
+1. **Install Dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
+2. **Environment Variables**:
+   - `HF_TOKEN`: Required. Your Hugging Face API token.
+   - `API_BASE_URL`: Optional (defaults to OpenAI).
+   - `MODEL_NAME`: Optional (defaults to gpt-4.1-mini).
 
-## 🌟 Why SupportFlow Arena?
-- **Real-World Impact**: Directly maps to common business workflows in SaaS support.
-- **Deterministic Grading**: High-precision scoring (0.0–1.0) for every agent decision.
-- **Multi-Step Reasoning**: Goes beyond simple classification to include policy enforcement and clarification logic.
-- **Winner-Ready Architecture**: Follows best practices for modular, scalable AI environments.
+3. **Run Inference**:
+   ```bash
+   python inference.py
+   ```
 
-## 📂 Project Structure
-```text
-repo/
-├── inference.py     # Main evaluation entry point
-├── app.py           # Gradio demo for Hugging Face Spaces
-├── Dockerfile       # Containerized runtime configuration
-├── README.md        # This storyteller guide
-│
-├── src/             # Modular source code
-│   ├── env/         # SupportDesk environment and schemas
-│   ├── graders/     # Task-specific grading logic
-│   └── utils/       # Shared formatting and validation
-│
-├── configs/         # Task and Prompt configurations (YAML)
-└── assets/          # Professional support ticket dataset (JSON)
-```
+## Rules & Constraints
+- `inference.py` must be in the project root.
+- All scores are strictly clamped between **0.01 and 0.99**.
+- Logging uses the exact `[START]`, `[STEP]`, and `[END]` format.
+- No internal newlines allowed in log outputs.
+- Uses only the official OpenAI Python client for LLM calls.
 
-## 🚀 Tasks & Grading
-SuppportFlow Arena validates agents across 3 specialized tasks:
-1. **Ticket Categorization**: Perfect mapping to Billing, Tech, or Account issues.
-2. **Support Triage**: Comprehensive category, priority, and routing analysis.
-3. **Full Resolution**: Multi-constraint response drafting following empathy and policy rules.
-
-## 🛠️ Usage
-### Local Performance Test
-```bash
-pip install -r requirements.txt
-python demo.py
-```
-
-### Live Demo
-Run `python app.py` to launch the Gradio UI locally or visit our [Hugging Face Space](https://huggingface.co/spaces/Nasar7/supportdesk-env).
-
-## 📄 Notes
-- **Offline First**: No external APIs or cloud databases are required at runtime.
-- **Standardized Schema**: Fully compliant with the OpenEnv specification for the Scaler Hackathon.
-- **Safe Ranges**: Rewards and scores strictly normalized to the [0.0, 1.0] range.
+## Project Structure
+- `inference.py`: Main entry point for the validator.
+- `app.py`: Dual-purpose FastAPI + Gradio server.
+- `src/`: Core logic (schemas, policy, env, grader, generator).
+- `data/`: Asset storage (tickets.json).
+- `demo.py`: CLI verification script.
