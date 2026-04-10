@@ -3,6 +3,13 @@ import json
 import sys
 import requests
 import traceback
+import sys
+
+# Ensure the root directory is in the Python path for 'src' imports
+root_path = os.path.abspath(os.path.join(os.path.dirname(__file__)))
+if root_path not in sys.path:
+    sys.path.insert(0, root_path)
+
 from openai import OpenAI
 from src.utils import format_reward, clean_text
 
