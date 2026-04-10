@@ -54,7 +54,7 @@ def run_task(task_id: str, client: OpenAI, model_name: str, env_base_url: str):
         step_resp.raise_for_status()
         data = step_resp.json()
         
-        reward = data.get("reward", 0.05)
+        reward = data.get("reward", 0.01)
         done = data.get("done", True)
         steps += 1
         rewards.append(reward)
@@ -68,9 +68,9 @@ def run_task(task_id: str, client: OpenAI, model_name: str, env_base_url: str):
     except Exception as e:
         error_msg = clean_text(str(e))
         steps += 1
-        rewards.append(0.05)
+        rewards.append(0.01)
         # [STEP] must still print so the harness records the failure
-        print(f"[STEP] step={steps} action=error reward=0.05 done=true error={error_msg}", flush=True)
+        print(f"[STEP] step={steps} action=error reward=0.01 done=true error={error_msg}", flush=True)
         # Debugging goes to stderr ONLY
         print(f"DEBUG Error running task {task_id}: {str(e)}", file=sys.stderr)
         # traceback.print_exc(file=sys.stderr)
