@@ -1,3 +1,13 @@
+---
+title: SupportFlow Arena
+emoji: 🤖
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_file: app.py
+pinned: false
+---
+
 # SupportFlow Arena: OpenEnv Hackathon Project
 
 ## Overview
