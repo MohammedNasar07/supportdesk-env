@@ -32,7 +32,7 @@ demo = gr.Interface(
         "Benchmark your AI support agents. It classifies tickets, assigns priority, "
         "detects security risks, and generates policy-safe responses."
     ),
-# theme="soft"
-# )
+    theme="soft"
+)
 
 # The 'demo' object is now imported by server/app.py to be mounted
