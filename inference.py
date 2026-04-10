@@ -60,7 +60,7 @@ def run_task(task_id: str, client: OpenAI, model_name: str, env_base_url: str):
         step_resp.raise_for_status()
         data = step_resp.json()
         
-        reward = data.get("reward", 0.01)
+        reward = max(0.01, min(0.99, float(data.get("reward", 0.01))))
         done = data.get("done", True)
         steps += 1
         rewards.append(reward)
