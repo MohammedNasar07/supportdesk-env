@@ -1,41 +1,4 @@
-name: SupportFlowArena
-version: "1.0.0"
-description: >
-  SupportFlow Arena: A professional reinforcement learning environment for 
-  AI support agents. Categorize, prioritize, and resolve complex customer 
-  support tickets under strict policy constraints.
-
-tags: [openenv, support, triage, classification, nlp, real-world, scaler-hackathon, pytorch]
-
 tasks:
-  - id: "classify"
-    name: "Ticket Categorization"
-    description: "Read the support ticket and classify it into exactly one category: billing, technical, general, refund, or complaint."
-    difficulty: "easy"
-    grader: "src.graders.classify:grade"
-
-  - id: "triage"
-    name: "Support Triage"
-    description: "Analyze the ticket to (1) classify category, (2) set priority level, and (3) route to the correct team."
-    difficulty: "medium"
-    grader: "src.graders.triage:grade"
-
-  - id: "resolve"
-    name: "Full Resolution"
-    description: "Complete full triage plus draft a professional, empathetic customer response following policy guidelines."
-    difficulty: "hard"
-    grader: "src.graders.resolve:grade"
-
-reward:
-  type: dense
-  range: [0.0, 1.0]
-
-endpoints:
-  health: GET  /health
-  tasks:  GET  /tasks
-  reset:  POST /reset
-  step:   POST /step
-  state:  GET  /state
-
-docker:
-  port: 7860
+  - classify
+  - triage
+  - resolve
