@@ -46,4 +46,10 @@ def grade_episode(ticket: Any, action: Any, task: str = "triage") -> dict:
         score = grade_resolve(ticket, action)
     else:
         score = grade_triage(ticket, action)
-    return {"total_score": score}
+
+    score = clamp(score)
+    return {
+        "score": score,
+        "total_score": score,
+        "task": task
+    }

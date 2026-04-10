@@ -40,7 +40,8 @@ class SupportFlowEnv:
         except Exception as e:
             result = {"total_score": 0.01, "error": str(e)}
             
-        reward = result.get("total_score", 0.01)
+        reward = result.get("score", result.get("total_score", 0.01))
+        reward = round(max(0.01, min(0.99, float(reward))), 4)
         done = True
         observation = "Task Finished"
         
