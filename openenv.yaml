@@ -1,0 +1,13 @@
+name: supportflow
+version: 1.0.0
+description: "A customer support triage and resolution environment."
+tasks:
+  classify:
+    name: "Ticket Classification"
+    grader: "src.grader:grade_classify"
+  triage:
+    name: "Support Triage"
+    grader: "src.grader:grade_triage"
+  resolve:
+    name: "Issue Resolution"
+    grader: "src.grader:grade_resolve"
