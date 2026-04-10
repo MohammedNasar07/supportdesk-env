@@ -1,29 +1,30 @@
-name: supportdesk-env
+name: SupportFlowArena
 version: "1.0.0"
 description: >
-  Customer Support Ticket Triage: AI agent reads inbound support tickets
-  and classifies, prioritizes, routes, and drafts responses.
+  SupportFlow Arena: A professional reinforcement learning environment for 
+  AI support agents. Categorize, prioritize, and resolve complex customer 
+  support tickets under strict policy constraints.
 
 tags: [openenv, support, triage, classification, nlp, real-world, scaler-hackathon, pytorch]
 
 tasks:
-  - id: classify
-    name: classify
-    description: "Classify the ticket into the correct category"
-    difficulty: easy
-    grader: "tasks.classify.grader:grade"
+  - id: "classify"
+    name: "Ticket Categorization"
+    description: "Read the support ticket and classify it into exactly one category: billing, technical, general, refund, or complaint."
+    difficulty: "easy"
+    grader: "src.graders.classify:grade"
 
-  - id: triage
-    name: triage
-    description: "Classify, set priority, and route the ticket"
-    difficulty: medium
-    grader: "tasks.triage.grader:grade"
+  - id: "triage"
+    name: "Support Triage"
+    description: "Analyze the ticket to (1) classify category, (2) set priority level, and (3) route to the correct team."
+    difficulty: "medium"
+    grader: "src.graders.triage:grade"
 
-  - id: resolve
-    name: resolve
-    description: "Full triage plus draft a professional customer response"
-    difficulty: hard
-    grader: "tasks.resolve.grader:grade"
+  - id: "resolve"
+    name: "Full Resolution"
+    description: "Complete full triage plus draft a professional, empathetic customer response following policy guidelines."
+    difficulty: "hard"
+    grader: "src.graders.resolve:grade"
 
 reward:
   type: dense

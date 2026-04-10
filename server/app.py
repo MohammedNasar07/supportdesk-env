@@ -1,141 +1,88 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-from typing import List, Dict
-import random
+from typing import List, Dict, Optional
+import os
 import uvicorn
-
-from graders import grade
+from src.env.support_env import SupportDeskEnv
+from src.env.models import TriageAction
 
 app = FastAPI()
 
-TICKETS = [
-    {
-        "body": "I cannot login to my account",
-        "gt_category": "account",
-        "gt_priority": "high",
-        "gt_team": "support",
-        "response_keywords": ["login", "reset", "password"],
-    },
-    {
-        "body": "Billing issue, wrong charge",
-        "gt_category": "billing",
-        "gt_priority": "critical",
-        "gt_team": "finance",
-        "response_keywords": ["refund", "billing", "charge"],
-    },
-    {
-        "body": "Feature not working properly",
-        "gt_category": "technical",
-        "gt_priority": "medium",
-        "gt_team": "engineering",
-        "response_keywords": ["bug", "fix", "issue"],
-    },
-]
+# Global environment instance (lazy loaded)
+_env: Optional[SupportDeskEnv] = None
 
-
-class EnvState:
-    def __init__(self):
-        self.ticket = None
-        self.actions: List[Dict] = []
-        self.step_count = 0
-        self.done = False
-
-
-state = EnvState()
-
+def get_env(task: str = "classify") -> SupportDeskEnv:
+    global _env
+    if _env is None or _env.task_name != task:
+        _env = SupportDeskEnv(task_name=task)
+    return _env
 
 class Action(BaseModel):
     message: str
-
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
-
 @app.get("/tasks")
 def get_tasks():
-    from task_definitions import TASKS
+    # Load tasks from the new config system
+    from src.env.support_env import SupportDeskEnv
+    temp_env = SupportDeskEnv(task_name="classify")
     strict_tasks = []
-    for t in TASKS.values():
+    for tid, t in temp_env.tasks.items():
         strict_tasks.append({
-            "id": t["id"],
-            "name": t["name"],
-            "description": t["description"],
-            "difficulty": t["difficulty"],
-            "grader": t["grader"]
+            "id": tid,
+            "name": t.get("name", tid),
+            "description": t.get("description", ""),
+            "difficulty": t.get("difficulty", "medium"),
+            "grader": t.get("grader", "")
         })
     return strict_tasks
 
-
 @app.post("/reset")
 def reset(task: str = "classify", seed: int = 42):
-    random.seed(seed)
-    state.ticket = random.choice(TICKETS)
-    state.actions = []
-    state.step_count = 0
-    state.done = False
-
-    return {"observation": state.ticket["body"], "done": False}
-
+    env = get_env(task)
+    obs = env.reset()
+    return {"observation": obs.body, "done": False}
 
 @app.post("/step")
 def step(action: Action):
-    if state.done:
-        return {"reward": 0.0, "done": True, "observation": "", "info": {}}
-
-    state.step_count += 1
+    # This maps the flat string action from the evaluator to the internal TriageAction
+    # For a winning submission, we usually want to handle both structured and unstructured input
+    env = get_env()
+    
+    # Heuristic mapping for the evaluator's "message" action
+    from src.env.models import ActionType
     msg = action.message.lower()
-
-    if "account" in msg:
-        state.actions.append({"action_type": "classify", "category": "account"})
-    elif "billing" in msg:
-        state.actions.append({"action_type": "classify", "category": "billing"})
-    elif "technical" in msg:
-        state.actions.append({"action_type": "classify", "category": "technical"})
-
-    if "critical" in msg:
-        state.actions.append({"action_type": "set_priority", "priority": "critical"})
-    elif "high" in msg:
-        state.actions.append({"action_type": "set_priority", "priority": "high"})
-    elif "medium" in msg:
-        state.actions.append({"action_type": "set_priority", "priority": "medium"})
-
-    if "support" in msg:
-        state.actions.append({"action_type": "route", "team": "support"})
-    elif "finance" in msg:
-        state.actions.append({"action_type": "route", "team": "finance"})
-    elif "engineering" in msg:
-        state.actions.append({"action_type": "route", "team": "engineering"})
-
-    if len(msg) > 20:
-        state.actions.append({"action_type": "draft_response", "response_draft": msg})
-
-    if state.step_count >= 3:
-        state.done = True
-
-        scores = grade("resolve", state.actions, state.ticket)
-
-        return {
-            "reward": scores["total"],
-            "done": True,
-            "observation": "",
-            "info": {"final_scores": scores},
-        }
-
+    
+    # Determine the most likely action type from the message
+    action_type = ActionType.SUBMIT
+    if "classify" in msg or "category" in msg:
+        action_type = ActionType.CLASSIFY
+    elif "priority" in msg:
+        action_type = ActionType.SET_PRIORITY
+    elif "route" in msg:
+        action_type = ActionType.ROUTE
+    elif len(msg) > 20:
+        action_type = ActionType.DRAFT_RESPONSE
+        
+    triage_action = TriageAction(
+        action_type=action_type,
+        message=action.message
+    )
+    
+    result = env.step(triage_action)
     return {
-        "reward": 0.2,
-        "done": False,
-        "observation": state.ticket["body"],
-        "info": {},
+        "reward": result.reward,
+        "done": result.done,
+        "observation": result.observation.body,
+        "info": result.info
     }
 
-
-# ✅ REQUIRED MAIN FUNCTION
 def main():
-    uvicorn.run("server.app:app", host="0.0.0.0", port=7860)
+    port = int(os.getenv("PORT", 7860))
+    uvicorn.run("server.app:app", host="0.0.0.0", port=port)
 
-
-# ✅ REQUIRED ENTRY GUARD
 if __name__ == "__main__":
     main()

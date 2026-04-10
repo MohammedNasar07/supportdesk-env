@@ -1,17 +1,9 @@
-"""Grader for the classify task."""
-
-
 def _safe(x: float) -> float:
     try:
         x = float(x)
     except Exception:
-        return 0.01
-    if x <= 0.0:
-        return 0.01
-    if x >= 1.0:
-        return 0.99
-    return round(x, 6)
-
+        return 0.0
+    return max(0.0, min(1.0, round(x, 6)))
 
 def grade(actions, ticket):
     """Grade the classify task. Returns dict with 'total' score."""
@@ -23,7 +15,7 @@ def grade(actions, ticket):
     if not cat:
         score = 0.2
     elif cat.lower() == ticket["gt_category"].lower():
-        score = 0.95
+        score = 1.0  # Full credit for correct category
     else:
         score = 0.3
 
