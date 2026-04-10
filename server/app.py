@@ -1,12 +1,17 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
-from typing import List, Dict, Optional
 import os
 import uvicorn
+import gradio as gr
+from app_ui import demo
 from src.env.support_env import SupportDeskEnv
 from src.env.models import TriageAction
 
 app = FastAPI()
+
+# Mount Gradio UI at the root or /ui
+# For Hugging Face Spaces, the root / is often best, but the validator needs API at root.
+# So we mount Gradio at /ui and keep root for API, or vice versa?
+# Actually, Gradio usually handles the root. Let's mount it at / and see.
+app = gr.mount_gradio_app(app, demo, path="/")
 
 # Global environment instance (lazy loaded)
 _env: Optional[SupportDeskEnv] = None
