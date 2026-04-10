@@ -23,13 +23,13 @@ def policy_check(ticket_text: str, agent_response: str, escalation: bool) -> flo
     # Check for forbidden phrases
     for phrase in FORBIDDEN_PHRASES:
         if phrase in resp:
-            return 0.01
+            return 0.05
             
     # Check for security keywords in ticket vs escalation decision
     ticket = ticket_text.lower()
     has_security_keyword = any(k in ticket for k in SECURITY_KEYWORDS)
     
     if has_security_keyword and not escalation:
-        return 0.15
+        return 0.20
         
-    return 0.99
+    return 0.95
