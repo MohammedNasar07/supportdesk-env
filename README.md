@@ -1,3 +1,14 @@
+---
+title: SupportFlow Arena
+emoji: 🏆
+colorFrom: blue
+colorTo: indigo
+sdk: gradio
+sdk_version: 5.16.1
+app_file: app.py
+pinned: false
+---
+
 # 🏆 SupportFlow Arena: OpenEnv Winner's Edition
 
 SupportFlow Arena is a professional reinforcement learning environment designed to train and benchmark AI customer support agents. It simulates a high-stakes support desk where agents must categorize tickets, prioritize urgency, detect security risks, and draft policy-compliant responses.
