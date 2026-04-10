@@ -8,9 +8,9 @@ class SupportFlowEnv:
     def __init__(self, tickets_file: str = None):
         self.tickets = load_tickets(tickets_file)
         self.current_ticket = None
-        self.task_name = None
+        self.task_name = "triage"
 
-    def reset(self, task_name: str = "classify") -> str:
+    def reset(self, task_name: str = "triage") -> str:
         """
         Reset the environment and return the ticket text.
         """
@@ -20,29 +20,28 @@ class SupportFlowEnv:
 
     def step(self, action_dict: Dict[str, Any]) -> Tuple[str, float, bool, Dict[str, Any]]:
         """
-        Evaluate the action and return (observation, reward, done, info).
+        Evaluate the action using the correct task grader.
         """
         try:
-            # Validate input using AgentAction schema
             agent_action = AgentAction(**action_dict)
         except Exception:
-            # Fallback for invalid formats
             agent_action = AgentAction(
                 category="general",
                 priority="low",
                 needs_clarification=True,
                 escalation=False,
-                response="I'm sorry, I encountered an internal error processing your request."
+                response="Error processing request."
             )
             
-        result = grade_episode(self.current_ticket, agent_action)
+        result = grade_episode(self.current_ticket, agent_action, self.task_name)
         
         reward = result["total_score"]
-        done = True  # Deterministic single-step episodes for triage
-        observation = "Episode Finished"
+        done = True
+        observation = "Task Finished"
         
         info = {
             "ticket_id": self.current_ticket.ticket_id,
+            "task": self.task_name,
             "metrics": result
         }
         

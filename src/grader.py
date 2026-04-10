@@ -2,48 +2,34 @@ from .schemas import Ticket, AgentAction
 from .policy import policy_check
 
 def clamp(score: float) -> float:
-    """
-    Mandatory OpenEnv validator constraint: Clamp scores between 0.01 and 0.99.
-    """
     return max(0.01, min(0.99, score))
 
-def score_match(pred: str, gold: str) -> float:
-    return 0.99 if pred.strip().lower() == gold.strip().lower() else 0.01
+def grade_classify(ticket: Ticket, action: AgentAction) -> dict:
+    # 50% category, 50% priority
+    c = 0.99 if action.category.lower() == ticket.expected_category.lower() else 0.01
+    p = 0.99 if action.priority.lower() == ticket.expected_priority.lower() else 0.01
+    return {"total_score": clamp(0.5 * c + 0.5 * p)}
 
-def score_bool(pred: bool, gold: bool) -> float:
-    return 0.99 if pred == gold else 0.01
+def grade_triage(ticket: Ticket, action: AgentAction) -> dict:
+    # 30% category, 30% priority, 40% clarification/escalation
+    c = 0.99 if action.category.lower() == ticket.expected_category.lower() else 0.01
+    p = 0.99 if action.priority.lower() == ticket.expected_priority.lower() else 0.01
+    cl = 0.99 if action.needs_clarification == ticket.ambiguous else 0.01
+    es = 0.99 if action.escalation == ticket.requires_escalation else 0.01
+    return {"total_score": clamp(0.3 * c + 0.3 * p + 0.2 * cl + 0.2 * es)}
 
-def grade_episode(ticket: Ticket, action: AgentAction) -> dict:
-    """
-    Weighted grading logic:
-    30% Category
-    20% Priority
-    20% Clarification
-    15% Escalation
-    15% Policy Safety
-    """
-    c_score = score_match(action.category, ticket.expected_category)
-    p_score = score_match(action.priority, ticket.expected_priority)
-    cl_score = score_bool(action.needs_clarification, ticket.ambiguous)
-    e_score = score_bool(action.escalation, ticket.requires_escalation)
-    pol_score = policy_check(ticket.text, action.response, action.escalation)
-    
-    # Weighted calculation
-    weighted_total = (
-        0.30 * c_score +
-        0.20 * p_score +
-        0.20 * cl_score +
-        0.15 * e_score +
-        0.15 * pol_score
-    )
-    
-    final_score = clamp(weighted_total)
-    
-    return {
-        "category_score": c_score,
-        "priority_score": p_score,
-        "clarification_score": cl_score,
-        "escalation_score": e_score,
-        "policy_score": pol_score,
-        "total_score": final_score
-    }
+def grade_resolve(ticket: Ticket, action: AgentAction) -> dict:
+    # 20% triage, 40% policy, 40% response quality
+    base = grade_triage(ticket, action)["total_score"]
+    pol = policy_check(ticket.text, action.response, action.escalation)
+    resp = 0.99 if len(action.response) > 50 else 0.01
+    return {"total_score": clamp(0.2 * base + 0.4 * pol + 0.4 * resp)}
+
+def grade_episode(ticket: Ticket, action: AgentAction, task: str = "triage") -> dict:
+    if task == "classify":
+        return grade_classify(ticket, action)
+    if task == "triage":
+        return grade_triage(ticket, action)
+    if task == "resolve":
+        return grade_resolve(ticket, action)
+    return grade_triage(ticket, action)

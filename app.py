@@ -25,13 +25,28 @@ def health():
 
 @app.get("/tasks")
 def get_tasks():
+    # MANDATORY: At least 3 tasks to pass Phase 2 Task Validation
     return [
         {
+            "id": "classify",
+            "name": "Ticket Classification",
+            "description": "Determine category and priority.",
+            "difficulty": "easy",
+            "grader": "src.grader:grade_classify"
+        },
+        {
             "id": "triage",
-            "name": "Support Triage",
-            "description": "Categorize and prioritize customer support tickets.",
+            "name": "Triage Decider",
+            "description": "Handle escalation and ambiguity.",
             "difficulty": "medium",
-            "grader": "src.grader:grade_episode"
+            "grader": "src.grader:grade_triage"
+        },
+        {
+            "id": "resolve",
+            "name": "Full Issue Resolution",
+            "description": "Compose policy-safe responses.",
+            "difficulty": "hard",
+            "grader": "src.grader:grade_resolve"
         }
     ]
 
@@ -43,7 +58,6 @@ def reset(task: str = "triage", seed: int = 42):
 @app.post("/step")
 def step(action: Action):
     try:
-        # Evaluator sends JSON string in 'message'
         action_dict = json.loads(action.message)
     except:
         action_dict = {
@@ -63,39 +77,42 @@ def step(action: Action):
     }
 
 # ─── GRADIO FRONTEND ───
-def run_agent_demo(ticket_id):
+def run_agent_demo(ticket_id, task_id):
     ticket = next((t for t in tickets if t.ticket_id == ticket_id), tickets[0])
-    # Mock response for demo
+    response_draft = f"I've analyzed your {ticket.expected_category} issue. We're on it."
+    
     mock_action = {
         "category": ticket.expected_category,
         "priority": ticket.expected_priority,
         "needs_clarification": ticket.ambiguous,
         "escalation": ticket.requires_escalation,
-        "response": f"Thanks for your message regarding {ticket.expected_category}. We are looking into it."
+        "response": response_draft
     }
+    
     agent_action = AgentAction(**mock_action)
-    result = grade_episode(ticket, agent_action)
+    result = grade_episode(ticket, agent_action, task=task_id)
     return ticket.text, json.dumps(mock_action, indent=2), json.dumps(result, indent=2)
 
 with gr.Blocks() as demo:
     gr.Markdown("# SupportFlow Arena: Triage Dashboard")
-    gr.Markdown("Deterministic RL-style support environment. Select a ticket to see how the agent and grader perform.")
+    gr.Markdown("Deterministic RL-style support environment with multiple tasks and mandatory high-density gradients.")
+    
     with gr.Row():
-        ticket_dropdown = gr.Dropdown(choices=[t.ticket_id for t in tickets], label="Select Ticket ID", value=tickets[0].ticket_id)
-        run_btn = gr.Button("Run Agent & Grade")
+        t_id = gr.Dropdown(choices=[t.ticket_id for t in tickets], label="Ticket ID", value=tickets[0].ticket_id)
+        task_choice = gr.Dropdown(choices=["classify", "triage", "resolve"], label="Task Type", value="triage")
+        run_btn = gr.Button("Evaluate Agent")
+        
     with gr.Row():
-        ticket_text = gr.Textbox(label="Ticket Text", lines=4)
+        t_text = gr.Textbox(label="Ticket Message", lines=4)
+        
     with gr.Row():
-        agent_out = gr.Code(label="Agent JSON Output", language="json")
-        grader_out = gr.Code(label="Grader Scoring Breakdown", language="json")
-    run_btn.click(run_agent_demo, inputs=[ticket_dropdown], outputs=[ticket_text, agent_out, grader_out])
+        agent_out = gr.Code(label="Agent Generated Decision", language="json")
+        score_out = gr.Code(label="Score Breakdown (Clamped 0.01-0.99)", language="json")
+        
+    run_btn.click(run_agent_demo, inputs=[t_id, task_choice], outputs=[t_text, agent_out, score_out])
 
-# ─── MOUNT & RUN ───
-# Mount Gradio into FastAPI at root (/)
-# This allows both API calls (POST /reset) and UI access
 app = gr.mount_gradio_app(app, demo, path="/")
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 7860))
-    # We use uvicorn to serve the combined app
     uvicorn.run(app, host="0.0.0.0", port=port)
