@@ -1,23 +1,16 @@
 import os
 import uvicorn
-import gradio as gr
-from fastapi import FastAPI
+import json
+from fastapi import FastAPI, Body
 from pydantic import BaseModel
-from typing import List, Dict, Optional
-from app_ui import demo
-from src.env.support_env import SupportDeskEnv
-from src.env.models import TriageAction
+from typing import Optional
+
+from src.env import SupportFlowEnv
 
 app = FastAPI()
 
-# Global environment instance (lazy loaded)
-_env: Optional[SupportDeskEnv] = None
-
-def get_env(task: str = "classify") -> SupportDeskEnv:
-    global _env
-    if _env is None or _env.task_name != task:
-        _env = SupportDeskEnv(task_name=task)
-    return _env
+# Global environment instance
+_env = SupportFlowEnv()
 
 class Action(BaseModel):
     message: str
@@ -28,63 +21,55 @@ def health():
 
 @app.get("/tasks")
 def get_tasks():
-    # Load tasks from the new config system
-    from src.env.support_env import SupportDeskEnv
-    temp_env = SupportDeskEnv(task_name="classify")
-    strict_tasks = []
-    for tid, t in temp_env.tasks.items():
-        strict_tasks.append({
-            "id": tid,
-            "name": t.get("name", tid),
-            "description": t.get("description", ""),
-            "difficulty": t.get("difficulty", "medium"),
-            "grader": t.get("grader", "")
-        })
-    return strict_tasks
+    # Return tasks compatible with OpenEnv schema
+    return [
+        {
+            "id": "classify",
+            "name": "Ticket Categorization",
+            "description": "Categorize, prioritize, and triage support tickets.",
+            "difficulty": "medium",
+            "grader": "src.grader:grade"
+        }
+    ]
 
 @app.post("/reset")
 def reset(task: str = "classify", seed: int = 42):
-    env = get_env(task)
-    obs = env.reset()
-    # Note: TicketObservation has 'body' field, reset response needs 'observation'
-    return {"observation": obs.body, "done": False}
+    ticket = _env.reset()
+    return {
+        "observation": ticket.customer_message,
+        "done": False,
+        "info": {"ticket_id": ticket.ticket_id}
+    }
 
 @app.post("/step")
 def step(action: Action):
-    env = get_env()
-    from src.env.models import ActionType
-    msg = action.message.lower()
+    # The evaluator sends JSON string in 'message'
+    try:
+        action_dict = json.loads(action.message)
+    except:
+        action_dict = {"category": "general", "priority": "medium", "needs_clarification": True, "escalation": False, "response": action.message}
     
-    action_type = ActionType.SUBMIT
-    if "classify" in msg or "category" in msg:
-        action_type = ActionType.CLASSIFY
-    elif "priority" in msg:
-        action_type = ActionType.SET_PRIORITY
-    elif "route" in msg:
-        action_type = ActionType.ROUTE
-    elif len(msg) > 20:
-        action_type = ActionType.DRAFT_RESPONSE
-        
-    triage_action = TriageAction(
-        action_type=action_type,
-        message=action.message
-    )
+    next_obs, reward, done = _env.step(action_dict)
     
-    result = env.step(triage_action)
+    obs_text = next_obs.customer_message if next_obs else ""
+    
     return {
-        "reward": result.reward,
-        "done": result.done,
-        "observation": result.observation.body,
-        "info": result.info
+        "reward": reward["total_score"],
+        "done": done,
+        "observation": obs_text,
+        "info": reward
     }
 
-# Mount Gradio UI at the root
-# We do this AFTER defining all FastAPI routes
-app = gr.mount_gradio_app(app, demo, path="/")
-
 def main():
+    import gradio as gr
+    from app import demo
+    
+    # Mount Gradio UI
+    # Note: Using '/ui' for Gradio and root for API is safest
+    combined_app = gr.mount_gradio_app(app, demo, path="/")
+    
     port = int(os.getenv("PORT", 7860))
-    uvicorn.run("server.app:app", host="0.0.0.0", port=port)
+    uvicorn.run(combined_app, host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
     main()
