@@ -80,14 +80,17 @@ def run_task(task_id: str):
 
     except Exception as e:
         error_msg = clean_text(str(e))
-        print(f"[STEP] step={steps+1} action=error reward=0.01 done=true error={error_msg}")
-        # traceback.print_exc(file=sys.stderr)
+        steps += 1
+        # Ensure error [STEP] is still on stdout so the evaluator sees it
+        print(f"[STEP] step={steps} action=error reward=0.01 done=true error={error_msg}")
+        # Detailed error info goes to stderr only
+        print(f"DEBUG: Task {task_id} failed: {str(e)}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
 
     finally:
-        # 6. End Log (Strict Format)
+        # 6. End Log (Strict Format: Guaranteed single print)
         rewards_list = ",".join(format_reward(r) for r in rewards)
-        final_score = rewards[0] if rewards else 0.01
-        print(f"[END] success={str(success).lower()} steps={steps} score={final_score:.6f} rewards={rewards_list}")
+        print(f"[END] success={str(success).lower()} steps={steps} rewards={rewards_list}")
 
 def main():
     # MANDATORY: Run at least 3 tasks to pass Phase 2 Validator

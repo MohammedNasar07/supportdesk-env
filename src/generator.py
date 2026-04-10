@@ -1,6 +1,6 @@
 import json
 import os
-from typing import List
+from typing import List, Optional
 from .schemas import Ticket
 
 def load_tickets(file_path: Optional[str] = None) -> List[Ticket]:
