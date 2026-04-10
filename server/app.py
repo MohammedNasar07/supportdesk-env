@@ -4,7 +4,11 @@ import uvicorn
 import gradio as gr
 from fastapi import FastAPI, Body
 from pydantic import BaseModel
+import sys
 from typing import Optional
+
+# Ensure the root directory is in the Python path for 'src' imports
+os.sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.env import SupportFlowEnv
 from src.generator import load_tickets
