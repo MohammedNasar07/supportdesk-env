@@ -1,6 +1,4 @@
-fastapi
-uvicorn
-pydantic
-requests
 openai
-openenv>=0.1.0
+pydantic
+gradio
+requests

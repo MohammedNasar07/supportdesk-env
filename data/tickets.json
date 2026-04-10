@@ -1,0 +1,82 @@
+[
+  {
+    "ticket_id": "TKT-001",
+    "text": "I was charged twice for my subscription this month. Please refund one of the charges immediately.",
+    "expected_category": "billing",
+    "expected_priority": "high",
+    "ambiguous": false,
+    "requires_escalation": false
+  },
+  {
+    "ticket_id": "TKT-002",
+    "text": "My account is locked and I cannot log in. I tried resetting my password but the email never arrived.",
+    "expected_category": "account",
+    "expected_priority": "medium",
+    "ambiguous": false,
+    "requires_escalation": false
+  },
+  {
+    "ticket_id": "TKT-003",
+    "text": "I think someone might have unauthorized access to my account. I see suspicious logins from another country.",
+    "expected_category": "security",
+    "expected_priority": "high",
+    "ambiguous": false,
+    "requires_escalation": true
+  },
+  {
+    "ticket_id": "TKT-004",
+    "text": "The app keeps crashing when I try to upload a profile picture. It shows a 500 error code.",
+    "expected_category": "technical",
+    "expected_priority": "medium",
+    "ambiguous": false,
+    "requires_escalation": false
+  },
+  {
+    "ticket_id": "TKT-005",
+    "text": "I need help with my recent order. It hasn't arrived yet.",
+    "expected_category": "general",
+    "expected_priority": "low",
+    "ambiguous": true,
+    "requires_escalation": false
+  },
+  {
+    "ticket_id": "TKT-006",
+    "text": "I suspect fraud on my credit card. Someone used it for a purchase on your platform that I didn't authorize.",
+    "expected_category": "security",
+    "expected_priority": "high",
+    "ambiguous": false,
+    "requires_escalation": true
+  },
+  {
+    "ticket_id": "TKT-007",
+    "text": "How do I change my billing address? I am moving to a new apartment next week.",
+    "expected_category": "billing",
+    "expected_priority": "low",
+    "ambiguous": false,
+    "requires_escalation": false
+  },
+  {
+    "ticket_id": "TKT-008",
+    "text": "I'm having trouble with the service. It's not working as expected.",
+    "expected_category": "general",
+    "expected_priority": "low",
+    "ambiguous": true,
+    "requires_escalation": false
+  },
+  {
+    "ticket_id": "TKT-009",
+    "text": "Urgently need access to my data. The platform says my file is corrupted after the last update.",
+    "expected_category": "technical",
+    "expected_priority": "high",
+    "ambiguous": false,
+    "requires_escalation": false
+  },
+  {
+    "ticket_id": "TKT-010",
+    "text": "I would like a refund guaranteed for the downtime yesterday. My account must be restored immediately.",
+    "expected_category": "billing",
+    "expected_priority": "high",
+    "ambiguous": false,
+    "requires_escalation": false
+  }
+]
