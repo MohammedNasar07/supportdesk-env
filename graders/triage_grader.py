@@ -1,5 +1,5 @@
 from openenv import Grader
-from graders import grade
+from . import grade
 
 class TriageGrader(Grader):
     def grade(self, actions, ticket):

@@ -1,5 +1,5 @@
 from openenv import Grader
-from graders import grade  # imports from root-level graders.py
+from . import grade  # imports from __init__.py
 
 class ClassifyGrader(Grader):
     def grade(self, actions, ticket):
