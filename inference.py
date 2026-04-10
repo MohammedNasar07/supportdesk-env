@@ -3,7 +3,6 @@ import json
 import sys
 import requests
 import traceback
-import sys
 
 # Ensure the root directory is in the Python path for 'src' imports
 root_path = os.path.abspath(os.path.join(os.path.dirname(__file__)))
