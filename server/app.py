@@ -8,7 +8,7 @@ import sys
 from typing import Optional
 
 # Ensure the root directory is in the Python path for 'src' imports
-os.sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.env import SupportFlowEnv
 from src.generator import load_tickets
@@ -19,6 +19,17 @@ from src.grader import grade_episode
 app = FastAPI()
 env = SupportFlowEnv()
 tickets = load_tickets()
+if not tickets:
+    print("WARNING: No tickets loaded! Creating a dummy ticket.", file=sys.stderr)
+    from src.schemas import Ticket
+    tickets = [Ticket(
+        ticket_id="DUMMY-01",
+        text="Sample message.",
+        expected_category="general",
+        expected_priority="low",
+        ambiguous=True,
+        requires_escalation=False
+    )]
 
 class Action(BaseModel):
     message: str

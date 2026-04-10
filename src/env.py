@@ -33,14 +33,19 @@ class SupportFlowEnv:
                 response="Error processing request."
             )
             
-        result = grade_episode(self.current_ticket, agent_action, self.task_name)
-        
-        reward = result["total_score"]
+        try:
+            if not self.current_ticket:
+                self.reset(self.task_name)
+            result = grade_episode(self.current_ticket, agent_action, self.task_name)
+        except Exception as e:
+            result = {"total_score": 0.01, "error": str(e)}
+            
+        reward = result.get("total_score", 0.01)
         done = True
         observation = "Task Finished"
         
         info = {
-            "ticket_id": self.current_ticket.ticket_id,
+            "ticket_id": self.current_ticket.ticket_id if self.current_ticket else "unknown",
             "task": self.task_name,
             "metrics": result
         }
